@@ -1,3 +1,5 @@
+#[cfg(target_arch = "wasm32")]
+use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 #[cfg(not(target_arch = "wasm32"))]
@@ -31,10 +33,24 @@ fn main() {
         .insert_resource(Combo::default())
         .insert_resource(EnemySpawnTimer::default())
         .insert_resource(TrailSpawnTimer::default())
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(primary_window()),
-            ..Default::default()
-        }))
+        .add_plugins({
+            #[cfg(target_arch = "wasm32")]
+            {
+                DefaultPlugins
+                    .set(WindowPlugin {
+                        primary_window: Some(primary_window()),
+                        ..Default::default()
+                    })
+                    .disable::<LogPlugin>()
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                DefaultPlugins.set(WindowPlugin {
+                    primary_window: Some(primary_window()),
+                    ..Default::default()
+                })
+            }
+        })
         .add_systems(Startup, setup)
         .add_systems(
             Update,
@@ -424,8 +440,8 @@ fn spawn_enemies(
 fn move_enemies(
     time: Res<Time>,
     run_state: Res<RunState>,
-    player_query: Query<&Transform, With<Player>>,
-    mut enemies: Query<(&Enemy, &mut Transform)>,
+    player_query: Query<&Transform, (With<Player>, Without<Enemy>)>,
+    mut enemies: Query<(&Enemy, &mut Transform), Without<Player>>,
 ) {
     if !run_state.active {
         return;
