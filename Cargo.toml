@@ -1,0 +1,29 @@
+[package]
+name = "bevy-demo"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy = { version = "0.14", default-features = false, features = [
+    "bevy_asset",
+    "bevy_core_pipeline",
+    "bevy_render",
+    "bevy_sprite",
+    "bevy_state",
+    "bevy_text",
+    "bevy_ui",
+    "bevy_winit",
+    "png",
+] }
+log = "0.4"
+rand = "0.8"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+bevy = { version = "0.14", default-features = false, features = ["x11"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+bevy = { version = "0.14", default-features = false, features = ["webgl2"] }
+getrandom = { version = "0.3", features = ["std", "wasm_js"] }
+uuid = { version = "1", features = ["std", "rng-getrandom"] }
+console_error_panic_hook = "0.1"
+console_log = "1.0"

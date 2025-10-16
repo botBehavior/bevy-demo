@@ -1,0 +1,9 @@
+[build]
+target = "wasm32-unknown-unknown"
+release = true
+public_url = "."
+dist = "dist"
+
+[serve]
+port = 8080
+open = false

@@ -1,0 +1,2 @@
+[env]
+BEVY_NO_AUDIO = "1"
