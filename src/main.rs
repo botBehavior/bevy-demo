@@ -1,9 +1,9 @@
 #[cfg(target_arch = "wasm32")]
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
-use bevy::window::PrimaryWindow;
 #[cfg(not(target_arch = "wasm32"))]
 use bevy::window::WindowResolution;
+use bevy::window::{CursorGrabMode, PrimaryWindow};
 use rand::prelude::*;
 use std::time::Duration;
 
@@ -29,6 +29,7 @@ fn main() {
     app.insert_resource(ClearColor(Color::BLACK))
         .insert_resource(RunState::default())
         .insert_resource(PointerTarget::default())
+        .insert_resource(CursorLockState::default())
         .insert_resource(Score::default())
         .insert_resource(Combo::default())
         .insert_resource(EnemySpawnTimer::default())
@@ -66,6 +67,7 @@ fn main() {
                 tick_combo,
                 update_ui,
                 handle_restart,
+                enforce_cursor_lock,
             ),
         );
 
@@ -131,6 +133,11 @@ impl Default for RunState {
 
 #[derive(Resource, Default)]
 struct PointerTarget(Option<Vec2>);
+
+#[derive(Resource, Default)]
+struct CursorLockState {
+    locked: bool,
+}
 
 #[derive(Resource, Default)]
 struct Score {
@@ -595,4 +602,28 @@ fn handle_restart(
 
     let mut player_transform = player_query.single_mut();
     player_transform.translation = Vec3::new(0.0, 0.0, player_transform.translation.z);
+}
+
+fn enforce_cursor_lock(
+    run_state: Res<RunState>,
+    mut state: ResMut<CursorLockState>,
+    mut windows: Query<&mut Window, With<PrimaryWindow>>,
+) {
+    let Ok(mut window) = windows.get_single_mut() else {
+        return;
+    };
+
+    if run_state.active {
+        if state.locked {
+            return;
+        }
+
+        window.cursor.visible = false;
+        window.cursor.grab_mode = CursorGrabMode::Locked;
+        state.locked = true;
+    } else if state.locked {
+        window.cursor.visible = true;
+        window.cursor.grab_mode = CursorGrabMode::None;
+        state.locked = false;
+    }
 }
