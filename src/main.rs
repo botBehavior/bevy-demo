@@ -1,3 +1,4 @@
+use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 #[cfg(not(target_arch = "wasm32"))]
@@ -34,10 +35,17 @@ fn main() {
         .insert_resource(PlayerHealth::default())
         .insert_resource(EnemySpawnTimer::default())
         .insert_resource(TrailSpawnTimer::default())
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(primary_window()),
-            ..Default::default()
-        }))
+        .add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(primary_window()),
+                    ..Default::default()
+                })
+                .set(LogPlugin {
+                    level: bevy::log::Level::INFO,
+                    ..Default::default()
+                }),
+        )
         .add_systems(Startup, setup)
         .add_systems(
             Update,
@@ -68,7 +76,6 @@ fn main() {
 #[cfg(target_arch = "wasm32")]
 fn init_wasm_panic_hooks() {
     console_error_panic_hook::set_once();
-    let _ = console_log::init_with_level(log::Level::Info);
 }
 
 #[cfg(target_arch = "wasm32")]
