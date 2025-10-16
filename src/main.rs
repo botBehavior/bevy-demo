@@ -7,6 +7,8 @@ use std::time::Duration;
 
 const PLAYER_SPEED: f32 = 900.0;
 const PLAYER_RADIUS: f32 = 14.0;
+const PLAYER_MAX_HEALTH: i32 = 3;
+const PLAYER_COLLISION_DAMAGE: i32 = 1;
 const TRAIL_LIFETIME: f32 = 2.6;
 const TRAIL_SPAWN_INTERVAL: f32 = 0.028;
 const TRAIL_HIT_RADIUS: f32 = 16.0;
@@ -29,6 +31,7 @@ fn main() {
         .insert_resource(PointerTarget::default())
         .insert_resource(Score::default())
         .insert_resource(Combo::default())
+        .insert_resource(PlayerHealth::default())
         .insert_resource(EnemySpawnTimer::default())
         .insert_resource(TrailSpawnTimer::default())
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -100,6 +103,31 @@ struct Enemy {
 #[derive(Component)]
 struct TrailSegment {
     remaining: f32,
+}
+
+#[derive(Resource)]
+struct PlayerHealth {
+    current: i32,
+    max: i32,
+}
+
+impl Default for PlayerHealth {
+    fn default() -> Self {
+        Self {
+            current: PLAYER_MAX_HEALTH,
+            max: PLAYER_MAX_HEALTH,
+        }
+    }
+}
+
+impl PlayerHealth {
+    fn reset(&mut self) {
+        self.current = self.max;
+    }
+
+    fn apply_damage(&mut self, amount: i32) {
+        self.current = (self.current - amount).clamp(0, self.max);
+    }
 }
 
 #[derive(Resource)]
@@ -191,7 +219,7 @@ struct ScoreText;
 #[derive(Component)]
 struct MainCamera;
 
-fn setup(mut commands: Commands) {
+fn setup(mut commands: Commands, player_health: Res<PlayerHealth>) {
     commands.spawn((Camera2dBundle::default(), MainCamera));
 
     commands.spawn((
@@ -210,7 +238,10 @@ fn setup(mut commands: Commands) {
     commands.spawn((
         TextBundle::from_sections([
             TextSection::new(
-                "Score: 0 | Best: 0 | Combo x1.0\n",
+                format!(
+                    "Score: 0 | Best: 0 | Combo x1.0 | Health: {}/{}\n",
+                    player_health.current, player_health.max
+                ),
                 TextStyle {
                     font_size: 22.0,
                     color: Color::WHITE,
@@ -484,6 +515,7 @@ fn handle_player_collisions(
     mut run_state: ResMut<RunState>,
     mut score: ResMut<Score>,
     mut combo: ResMut<Combo>,
+    mut health: ResMut<PlayerHealth>,
     player_query: Query<&Transform, With<Player>>,
     enemies: Query<(Entity, &Transform), With<Enemy>>,
 ) {
@@ -497,10 +529,14 @@ fn handle_player_collisions(
     for (entity, transform) in &enemies {
         let diff = transform.translation.truncate() - player_pos;
         if diff.length_squared() <= PLAYER_RADIUS * PLAYER_RADIUS {
-            run_state.active = false;
-            score.best = score.best.max(score.current);
-            combo.reset();
+            health.apply_damage(PLAYER_COLLISION_DAMAGE);
             commands.entity(entity).despawn_recursive();
+            if health.current <= 0 {
+                health.current = 0;
+                run_state.active = false;
+                score.best = score.best.max(score.current);
+                combo.reset();
+            }
             break;
         }
     }
@@ -525,12 +561,13 @@ fn update_ui(
     run_state: Res<RunState>,
     score: Res<Score>,
     combo: Res<Combo>,
+    health: Res<PlayerHealth>,
     mut texts: Query<&mut Text, With<ScoreText>>,
 ) {
     let mut text = texts.single_mut();
     text.sections[0].value = format!(
-        "Score: {} | Best: {} | Combo x{:.1}\n",
-        score.current, score.best, combo.multiplier
+        "Score: {} | Best: {} | Combo x{:.1} | Health: {}/{}\n",
+        score.current, score.best, combo.multiplier, health.current, health.max
     );
 
     if run_state.active {
@@ -549,6 +586,7 @@ fn handle_restart(
     mut pointer: ResMut<PointerTarget>,
     mut enemy_spawn: ResMut<EnemySpawnTimer>,
     mut trail_timer: ResMut<TrailSpawnTimer>,
+    mut health: ResMut<PlayerHealth>,
     mut player_query: Query<&mut Transform, With<Player>>,
     enemies: Query<Entity, With<Enemy>>,
     trail_segments: Query<Entity, With<TrailSegment>>,
@@ -568,6 +606,7 @@ fn handle_restart(
     pointer.0 = None;
     enemy_spawn.timer = Timer::from_seconds(ENEMY_SPAWN_INTERVAL_START, TimerMode::Repeating);
     trail_timer.0 = Timer::from_seconds(TRAIL_SPAWN_INTERVAL, TimerMode::Repeating);
+    health.reset();
 
     for entity in enemies.iter() {
         commands.entity(entity).despawn_recursive();
