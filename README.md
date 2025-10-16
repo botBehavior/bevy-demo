@@ -2,123 +2,29 @@
 
 🎯 Core Concept: “Threadweaver”
 
-You are a luminous entity gliding through an endless black void.
-Everywhere you move, you leave a trailing thread of energy.
-Enemies rush at you from all directions — and anything that touches your thread is sliced apart.
+Threadweaver is a minimalist arena survival prototype built in Bevy. You are a luminous entity weaving radiant threads through a black void. Every movement leaves a lingering trail that harms enemies, so victory comes from deft positioning, pattern making, and managing the chaos closing in from every edge of the arena.
 
-Your goal: survive as long as possible, carve beautiful patterns, and build up combos through precise movement and risk.
+## Current Gameplay Slice
+- **Constant motion:** The player slides toward the locked pointer target at a fixed speed while staying inside the 960×720 arena bounds.
+- **Lingering trail weapon:** Trail segments persist for roughly 2.6 seconds and tick damage on enemies that pass over them instead of destroying on contact.
+- **Enemy pressure:** Chargers spawn from the arena borders with scaling speed and health, forcing continual motion.
+- **Health-driven survival:** The player begins each run with five hit points. Collisions remove one health unless a shield buff is active; defeat comes only when health reaches zero.
+- **Power-up drops:** Defeated enemies can drop heart (heal), shield (10s invulnerability), or damage-core (permanent run-long damage bonus) pickups.
+- **HUD & arena framing:** Border sprites outline the playfield. The HUD now reports score, best score, combo multiplier, health, damage bonus, shield timer, and run status to keep the player oriented.
+- **Cursor lock & pause:** The pointer is hidden and locked to the canvas whenever a run is active. Press `Esc` to pause (releasing the cursor) or `Space` after a defeat to restart.
 
-🧩 Gameplay Loop (MVP)
-1. Move → weave → slice → survive
+## Remaining Roadmap Highlights
+- Add touch input alongside the mouse pointer-lock flow.
+- Layer in particles, audio, and additional enemy archetypes for richer feedback.
+- Persist best score and run summaries to IndexedDB.
+- Implement end-of-run analytics and polish tasks from the design spec.
 
-Control with touch drag or mouse movement — you’re always gliding.
-
-Your tail leaves a thread that persists for 2–3 seconds, letting you weave patterns.
-
-Enemies spawn from screen edges and rush toward you.
-
-If an enemy touches your thread, it dies — satisfying pop + particle burst.
-
-If it hits you, you lose a life (or the run ends).
-
-Consecutive kills within short windows create a combo multiplier that feeds into your local score.
-
-The MVP run ends when you’re hit; the goal is to survive longer and chase a higher personal best stored locally.
-
-🧠 Dopamine Architecture
-Reward Tier	Event	Sensation	Design Hook
-Instant (0–1s)	Thread slices enemy	Flash, pop, “schwip” audio	micro reward loop
-Short (5–10s)	Combo multiplier / streak achieved	color + particle burst	“keep moving!” tension
-Mid (1–2 min)	Stretch: evolution / new thread type	new color pattern + SFX shift	transformation dopamine
-Long (session)	Personal best (local) / future palette glow	mastery loop
-🎨 Visual Design (Prototype)
-
-Super minimal:
-
-Background: pure black.
-
-Player: small glowing dot (white or blue).
-
-Thread: fading neon trail, 2–3 px wide.
-
-Enemies: colored triangles or squares.
-
-Particles: short-lived sparks on kills.
-
-Even in the prototype, this style will feel electric if timing, SFX, and easing are tuned right.
-
-🧰 Technical Design (WASM)
-Layer	Tool	Notes
-Engine	Bevy 0.14 (Rust)	ECS, easy 2D sprite rendering
-Physics	Simple AABB math	No physics engine needed
-Rendering	bevy_winit + bevy_webgl2	compiles cleanly to WASM
-Audio	WebAudio (web-sys)	slicing “swish” + pop sounds
-Input	Mouse or touch position tracking	smooth interpolation each frame
-Persistence	IndexedDB	best score, unlocked colors
-FPS Target	60fps, fixed timestep	mobile-first fluidity
-🧮 Core Systems Breakdown
-1. Thread System
-
-Stores last N positions (VecDeque).
-
-Each frame, draw a polyline (neon glow, fade alpha over time).
-
-Collision test: any enemy intersecting segment dies.
-
-2. Enemy System
-
-Enemies spawn at screen edges with homing behavior.
-
-Speed increases over time.
-
-Spawn rate accelerates logarithmically.
-
-3. Combo & Score System
-
-Tracks time between kills.
-
-Decay timer resets on each kill.
-
-Multiplier affects particle density + sound pitch and drives the local score tracker.
-
-🧱 MVP Scope (1-week prototype)
-Day	Milestone
-1	Bevy-WASM setup → render player dot + trail
-2	Enemy spawns + simple homing movement
-3	Trail collision detection + kill effect
-4	Combo system + streak feedback
-5	Score presentation + basic HUD (combo meter, best run stored locally)
-6	Sound & polish (WebAudio pop/swish)
-7	Upload to GitHub Pages (COOP/COEP headers) for testing
-🪄 Stretch goals
-
-- Upgrade draft moments (thread length, damage radius, persistence, new thread archetypes).
-- Overheat/energy management layer to reward controlled pacing.
-- Screen shake when combo hits 10x.
-- “Slow motion burst” when narrowly dodging.
-- Color palette unlocks after each 3-minute run.
-- Procedural “melodic” sound layer (frequency up with combo).
-- High-score web leaderboard (local or optional backend).
-
-🚀 The dopamine thesis
-
-Threadweaver trades projectiles for self-expression through movement.
-It’s not about shooting — it’s about weaving chaos into order.
-Fast, elegant, minimalist — and it can live entirely in a browser tab.
+🚀 Threadweaver trades projectiles for self-expression through motion. It’s about weaving chaos into order.
 
 📚 Additional Documentation for Agents
-
 - [Threadweaver MVP Specification](docs/spec.md) – detailed product scope and system breakdown.
 - [Collaboration Workflow](docs/workflow.md) – branching, review, and testing expectations for agent teams.
 - [Automated Build Scaffold](docs/automation.md) – planned CI/CD steps to reach deployable builds quickly.
-
-- Upgrade draft moments (thread length, damage radius, persistence, new thread archetypes).
-- Overheat/energy management layer to reward controlled pacing.
-- Screen shake when combo hits 10x.
-- “Slow motion burst” when narrowly dodging.
-- Color palette unlocks after each 3-minute run.
-- Procedural “melodic” sound layer (frequency up with combo).
-- High-score web leaderboard (local or optional backend).
 
 ## Developer Quickstart
 
@@ -132,7 +38,7 @@ Fast, elegant, minimalist — and it can live entirely in a browser tab.
 cargo run
 ```
 
-The binary launches a playable slice of the MVP loop: steer the glowing avatar with your mouse, weave trails, slice enemies, and chase a local high score. Press `Space` after a crash to restart a run instantly.
+The binary launches the current combat slice: steer the avatar with the mouse (cursor lock enabled), weave trails to damage enemies, harvest power-ups, and survive as long as possible. Press `Esc` to pause/unlock the cursor and `Space` after a defeat to reset the run.
 
 ### Basic Quality Checks
 ```bash
@@ -164,12 +70,3 @@ The project ships with `vercel.json` and a scripted build (`scripts/vercel-build
 3. Share the generated preview URL for remote playtesting.
 
 Refer to `docs/status.md` for the latest deployment status snapshot.
-Threadweaver trades projectiles for self-expression through movement.
-It’s not about shooting — it’s about weaving chaos into order.
-Fast, elegant, minimalist — and it can live entirely in a browser tab.
-
-📚 Additional Documentation for Agents
-
-- [Threadweaver MVP Specification](docs/spec.md) – detailed product scope and system breakdown.
-- [Collaboration Workflow](docs/workflow.md) – branching, review, and testing expectations for agent teams.
-- [Automated Build Scaffold](docs/automation.md) – planned CI/CD steps to reach deployable builds quickly.
