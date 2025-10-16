@@ -112,6 +112,14 @@ Fast, elegant, minimalist — and it can live entirely in a browser tab.
 - [Collaboration Workflow](docs/workflow.md) – branching, review, and testing expectations for agent teams.
 - [Automated Build Scaffold](docs/automation.md) – planned CI/CD steps to reach deployable builds quickly.
 
+- Upgrade draft moments (thread length, damage radius, persistence, new thread archetypes).
+- Overheat/energy management layer to reward controlled pacing.
+- Screen shake when combo hits 10x.
+- “Slow motion burst” when narrowly dodging.
+- Color palette unlocks after each 3-minute run.
+- Procedural “melodic” sound layer (frequency up with combo).
+- High-score web leaderboard (local or optional backend).
+
 ## Developer Quickstart
 
 ### Prerequisites
@@ -150,3 +158,12 @@ The project ships with `vercel.json` and a scripted build (`scripts/vercel-build
 3. Share the generated preview URL for remote playtesting.
 
 Refer to `docs/status.md` for the latest deployment status snapshot.
+Threadweaver trades projectiles for self-expression through movement.
+It’s not about shooting — it’s about weaving chaos into order.
+Fast, elegant, minimalist — and it can live entirely in a browser tab.
+
+📚 Additional Documentation for Agents
+
+- [Threadweaver MVP Specification](docs/spec.md) – detailed product scope and system breakdown.
+- [Collaboration Workflow](docs/workflow.md) – branching, review, and testing expectations for agent teams.
+- [Automated Build Scaffold](docs/automation.md) – planned CI/CD steps to reach deployable builds quickly.
