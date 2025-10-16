@@ -455,8 +455,8 @@ fn spawn_enemies(
 fn move_enemies(
     time: Res<Time>,
     run_state: Res<RunState>,
-    player_query: Query<&Transform, With<Player>>,
-    mut enemies: Query<(&Enemy, &mut Transform)>,
+    player_query: Query<&Transform, (With<Player>, Without<Enemy>)>,
+    mut enemies: Query<(&Enemy, &mut Transform), Without<Player>>,
 ) {
     if !run_state.active {
         return;
