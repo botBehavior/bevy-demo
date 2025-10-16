@@ -5,7 +5,7 @@ Threadweaver is a minimalist arena survival experience built in Bevy for the web
 
 ## Core Pillars
 1. **Expressive Movement** – The player glides continuously, leaving a fading trail that can be shaped into lethal patterns.
-2. **Reactive Combat** – Enemies charge from the arena edges and can be destroyed by intersecting the thread.
+2. **Resilient Combat** – Trails deal damage over time, enemies fight back with health pools, and power-up drops add tactical choices mid-run.
 3. **Score Chasing** – Local combo multipliers and run summaries encourage replay and mastery.
 
 ## Success Metrics
@@ -15,8 +15,9 @@ Threadweaver is a minimalist arena survival experience built in Bevy for the web
 - **Engagement Signal:** Capture anonymized session telemetry showing a median session length of at least 90 seconds during initial human testing cohort.
 
 ## Player Controls
-- Mouse or touch drag to steer the avatar.
-- No button inputs; momentum is constant to maintain flow.
+- Mouse pointer lock drives the avatar; the cursor remains hidden while a run is active and is released on pause or defeat.
+- Touch drag input is planned for parity but not yet implemented.
+- Momentum is constant to maintain flow.
 
 ## Gameplay Loop
 1. Move to reposition and curve the trail.
@@ -26,23 +27,28 @@ Threadweaver is a minimalist arena survival experience built in Bevy for the web
 
 ## Systems Overview
 ### Thread System
-- Maintain a queue of recent positions (2–3 seconds of history).
+- Maintain a queue of recent positions (≈2.6 seconds of history).
 - Render as a glowing polyline with alpha falloff.
-- Check collisions between trail segments and enemy hitboxes.
+- Tick trail damage against enemy hitboxes using the player’s current damage multiplier.
 
 ### Enemy System
 - Spawn at screen edges with direction toward the player.
-- Increase spawn frequency and speed over time.
-- Destroyed enemies trigger particles, audio, and scoring events.
+- Increase spawn frequency and speed over time while scaling per-enemy health.
+- On defeat, award score, roll for power-up drops, and trigger future VFX/SFX hooks.
 
 ### Combo & Score
 - Track timestamps of kills to maintain a combo window.
 - Apply multipliers to score when kills remain within the window.
-- Persist local best score using IndexedDB.
+- Persist local best score using IndexedDB (still pending implementation).
+
+### Power-up & Buff System
+- Defeated enemies can drop hearts (heal one HP), shields (10 seconds of invulnerability), or damage cores (per-run damage bonus).
+- Power-ups expire if ignored and display simple sprite icons for now.
+- The HUD surfaces current shield time remaining and accumulated damage multiplier.
 
 ### Health & Fail State
-- Single-hit defeat for MVP.
-- End-of-run summary: duration, enemies defeated, best score comparison.
+- Five-hit health pool with shield override: enemy contact removes one health unless the shield timer is active.
+- End-of-run summary (duration, enemies defeated, best score comparison) remains a follow-up task.
 
 ## Technical Stack
 - **Engine:** Bevy 0.14 targeting WASM.
