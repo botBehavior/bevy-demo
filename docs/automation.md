@@ -16,6 +16,11 @@ These notes outline the initial automation plan so agents can stand up CI/CD qui
    - Upload the generated WASM bundle and assets as workflow artifacts for manual testing if available.
 
 ## Continuous Deployment Outline
+- **Primary target: Vercel static hosting.** Upon CI success on `main`, trigger a deployment job (via Vercel Git integration or API) that:
+  1. Executes `scripts/vercel-build.sh` to install the Rust toolchain, add the WASM target, and run `trunk build --release`.
+  2. Publishes the generated `dist/` directory as a static site.
+  3. Captures and surfaces the preview / production URL in the PR status check for quick tester access.
+- **Fallback:** Retain the option to publish to GitHub Pages by pushing `dist/` to `gh-pages` if Vercel is unavailable.
 - After CI success on `main`, trigger a deployment job that:
   1. Runs `wasm-bindgen` (via Trunk or wasm-bindgen-cli) to produce web-ready assets.
   2. Publishes the `dist/` directory to the `gh-pages` branch with `peaceiris/actions-gh-pages`.

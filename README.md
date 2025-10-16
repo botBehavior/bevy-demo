@@ -111,3 +111,59 @@ Fast, elegant, minimalist — and it can live entirely in a browser tab.
 - [Threadweaver MVP Specification](docs/spec.md) – detailed product scope and system breakdown.
 - [Collaboration Workflow](docs/workflow.md) – branching, review, and testing expectations for agent teams.
 - [Automated Build Scaffold](docs/automation.md) – planned CI/CD steps to reach deployable builds quickly.
+
+- Upgrade draft moments (thread length, damage radius, persistence, new thread archetypes).
+- Overheat/energy management layer to reward controlled pacing.
+- Screen shake when combo hits 10x.
+- “Slow motion burst” when narrowly dodging.
+- Color palette unlocks after each 3-minute run.
+- Procedural “melodic” sound layer (frequency up with combo).
+- High-score web leaderboard (local or optional backend).
+
+## Developer Quickstart
+
+### Prerequisites
+- Install Rust (1.79 or newer) with `rustup` (the repository includes `rust-toolchain.toml` to pin CI/CD installs).
+- Add the `wasm32-unknown-unknown` target for web builds: `rustup target add wasm32-unknown-unknown`.
+- Install [`trunk`](https://trunkrs.dev) for local WebAssembly builds: `cargo install --locked trunk`.
+
+### Run the Native Prototype
+```bash
+cargo run
+```
+
+The binary launches a playable slice of the MVP loop: steer the glowing avatar with your mouse, weave trails, slice enemies, and chase a local high score. Press `Space` after a crash to restart a run instantly.
+
+### Basic Quality Checks
+```bash
+cargo fmt
+cargo check
+```
+
+These commands align with the workflow expectations and should pass before opening a pull request.
+
+### Build the Web Client Locally
+```bash
+trunk serve
+```
+
+This spins up a hot-reloading dev server at `http://localhost:8080`, compiling the Bevy app to WebAssembly and mounting it on the `<canvas id="bevy-canvas">` element defined in `index.html`.
+
+### Deploy to Vercel
+
+The project ships with `vercel.json` and a scripted build (`scripts/vercel-build.sh`) so Vercel can provision Rust, compile the WASM bundle, and publish the static output under `dist/`.
+
+1. Authenticate and link the repository (`vercel link`).
+2. Trigger a build (`vercel --prod`). Vercel will execute the build script, producing the optimized WASM + JS glue code via `trunk build --release`.
+3. Share the generated preview URL for remote playtesting.
+
+Refer to `docs/status.md` for the latest deployment status snapshot.
+Threadweaver trades projectiles for self-expression through movement.
+It’s not about shooting — it’s about weaving chaos into order.
+Fast, elegant, minimalist — and it can live entirely in a browser tab.
+
+📚 Additional Documentation for Agents
+
+- [Threadweaver MVP Specification](docs/spec.md) – detailed product scope and system breakdown.
+- [Collaboration Workflow](docs/workflow.md) – branching, review, and testing expectations for agent teams.
+- [Automated Build Scaffold](docs/automation.md) – planned CI/CD steps to reach deployable builds quickly.

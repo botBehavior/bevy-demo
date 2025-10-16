@@ -8,6 +8,12 @@ Threadweaver is a minimalist arena survival experience built in Bevy for the web
 2. **Reactive Combat** – Enemies charge from the arena edges and can be destroyed by intersecting the thread.
 3. **Score Chasing** – Local combo multipliers and run summaries encourage replay and mastery.
 
+## Success Metrics
+- **First Playtest Readiness:** Reach a playable web build that agents can launch locally within two minutes by the end of sprint day 3.
+- **Performance Target:** Maintain a stable 60 FPS on mid-range laptops (Intel Iris-class GPUs) with at least 25 concurrent enemies.
+- **Gameplay Validation:** Enable a full survival run (spawn, trail damage, fail state) with combo scoring that produces non-zero local scores in 90% of automated smoke-test runs.
+- **Engagement Signal:** Capture anonymized session telemetry showing a median session length of at least 90 seconds during initial human testing cohort.
+
 ## Player Controls
 - Mouse or touch drag to steer the avatar.
 - No button inputs; momentum is constant to maintain flow.
