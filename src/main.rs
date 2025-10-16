@@ -1,7 +1,10 @@
+use bevy::input::mouse::MouseMotion;
+#[cfg(target_arch = "wasm32")]
+use bevy::log::LogPlugin;
 use bevy::prelude::*;
-use bevy::window::PrimaryWindow;
 #[cfg(not(target_arch = "wasm32"))]
 use bevy::window::WindowResolution;
+use bevy::window::{CursorGrabMode, PrimaryWindow};
 use rand::prelude::*;
 use std::time::Duration;
 
@@ -20,6 +23,16 @@ const ENEMY_SIZE: Vec2 = Vec2::new(36.0, 36.0);
 const COMBO_WINDOW: f32 = 1.2;
 const BASE_SCORE: u32 = 10;
 const ARENA_BOUNDS: Vec2 = Vec2::new(960.0, 720.0);
+const PLAYER_MAX_HEALTH: u32 = 5;
+const ENEMY_BASE_HEALTH: u32 = 4;
+const TRAIL_BASE_DAMAGE: u32 = 1;
+const DAMAGE_POWER_BONUS: f32 = 0.5;
+const SHIELD_DURATION: f32 = 10.0;
+const POWER_UP_LIFETIME: f32 = 12.0;
+const POWER_UP_DROP_CHANCE: f32 = 0.35;
+const POWER_UP_HEART_WEIGHT: f32 = 0.45;
+const POWER_UP_SHIELD_WEIGHT: f32 = 0.3;
+const POWER_UP_DAMAGE_WEIGHT: f32 = 0.25;
 
 fn main() {
     #[cfg(target_arch = "wasm32")]
@@ -29,20 +42,39 @@ fn main() {
     app.insert_resource(ClearColor(Color::BLACK))
         .insert_resource(RunState::default())
         .insert_resource(PointerTarget::default())
+        .insert_resource(PlayerHealth::default())
+        .insert_resource(PlayerCombatStats::default())
+        .insert_resource(ShieldState::default())
+        .insert_resource(CursorLockState::default())
         .insert_resource(Score::default())
         .insert_resource(Combo::default())
         .insert_resource(PlayerHealth::default())
         .insert_resource(EnemySpawnTimer::default())
         .insert_resource(TrailSpawnTimer::default())
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(primary_window()),
-            ..Default::default()
-        }))
+        .add_plugins({
+            #[cfg(target_arch = "wasm32")]
+            {
+                DefaultPlugins
+                    .set(WindowPlugin {
+                        primary_window: Some(primary_window()),
+                        ..Default::default()
+                    })
+                    .disable::<LogPlugin>()
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                DefaultPlugins.set(WindowPlugin {
+                    primary_window: Some(primary_window()),
+                    ..Default::default()
+                })
+            }
+        })
         .add_systems(Startup, setup)
         .add_systems(
             Update,
             (
                 update_pointer_target,
+                tick_shield_state,
                 move_player,
                 spawn_trail_segments,
                 update_trail_segments,
@@ -50,9 +82,13 @@ fn main() {
                 move_enemies,
                 handle_trail_collisions,
                 handle_player_collisions,
+                handle_power_up_pickups,
+                tick_power_up_lifetimes,
                 tick_combo,
                 update_ui,
                 handle_restart,
+                handle_pause_toggle,
+                enforce_cursor_lock,
             ),
         );
 
@@ -101,6 +137,11 @@ struct Enemy {
 }
 
 #[derive(Component)]
+struct EnemyHealth {
+    current: f32,
+}
+
+#[derive(Component)]
 struct TrailSegment {
     remaining: f32,
 }
@@ -133,16 +174,128 @@ impl PlayerHealth {
 #[derive(Resource)]
 struct RunState {
     active: bool,
+    paused: bool,
+}
+
+impl RunState {
+    fn is_running(&self) -> bool {
+        self.active && !self.paused
+    }
 }
 
 impl Default for RunState {
     fn default() -> Self {
-        Self { active: true }
+        Self {
+            active: true,
+            paused: false,
+        }
     }
 }
 
 #[derive(Resource, Default)]
-struct PointerTarget(Option<Vec2>);
+struct PointerTarget {
+    position: Vec2,
+}
+
+impl PointerTarget {
+    fn reset(&mut self) {
+        self.position = Vec2::ZERO;
+    }
+}
+
+#[derive(Resource, Default)]
+struct CursorLockState {
+    locked: bool,
+}
+
+#[derive(Resource)]
+struct PlayerHealth {
+    current: u32,
+    max: u32,
+}
+
+impl Default for PlayerHealth {
+    fn default() -> Self {
+        Self {
+            current: PLAYER_MAX_HEALTH,
+            max: PLAYER_MAX_HEALTH,
+        }
+    }
+}
+
+impl PlayerHealth {
+    fn heal(&mut self, amount: u32) {
+        self.current = (self.current + amount).min(self.max);
+    }
+
+    fn reset(&mut self) {
+        self.current = self.max;
+    }
+
+    fn apply_damage(&mut self, amount: u32) {
+        if amount >= self.current {
+            self.current = 0;
+        } else {
+            self.current -= amount;
+        }
+    }
+}
+
+#[derive(Resource, Default)]
+struct ShieldState {
+    timer: Option<Timer>,
+}
+
+impl ShieldState {
+    fn activate(&mut self) {
+        let mut timer = Timer::from_seconds(SHIELD_DURATION, TimerMode::Once);
+        timer.unpause();
+        self.timer = Some(timer);
+    }
+
+    fn is_active(&self) -> bool {
+        matches!(self.timer.as_ref(), Some(timer) if !timer.finished())
+    }
+
+    fn clear(&mut self) {
+        self.timer = None;
+    }
+
+    fn remaining_seconds(&self) -> Option<f32> {
+        self.timer
+            .as_ref()
+            .and_then(|timer| (!timer.finished()).then(|| timer.remaining_secs()))
+    }
+}
+
+#[derive(Resource)]
+struct PlayerCombatStats {
+    base_trail_damage: f32,
+    bonus_multiplier: f32,
+}
+
+impl Default for PlayerCombatStats {
+    fn default() -> Self {
+        Self {
+            base_trail_damage: TRAIL_BASE_DAMAGE as f32,
+            bonus_multiplier: 0.0,
+        }
+    }
+}
+
+impl PlayerCombatStats {
+    fn trail_damage(&self) -> f32 {
+        self.base_trail_damage * (1.0 + self.bonus_multiplier)
+    }
+
+    fn add_bonus(&mut self) {
+        self.bonus_multiplier += DAMAGE_POWER_BONUS;
+    }
+
+    fn reset(&mut self) {
+        self.bonus_multiplier = 0.0;
+    }
+}
 
 #[derive(Resource, Default)]
 struct Score {
@@ -204,6 +357,36 @@ impl Default for EnemySpawnTimer {
 #[derive(Resource)]
 struct TrailSpawnTimer(Timer);
 
+#[derive(Component)]
+struct HudScore;
+
+#[derive(Component)]
+struct HudHealth;
+
+#[derive(Component)]
+struct HudCombo;
+
+#[derive(Component)]
+struct HudBuffs;
+
+#[derive(Component)]
+struct HudStatus;
+
+#[derive(Component)]
+struct PowerUp {
+    kind: PowerUpKind,
+}
+
+#[derive(Component)]
+struct PowerUpLifetime(Timer);
+
+#[derive(Clone, Copy)]
+enum PowerUpKind {
+    Heart,
+    Shield,
+    Damage,
+}
+
 impl Default for TrailSpawnTimer {
     fn default() -> Self {
         Self(Timer::from_seconds(
@@ -214,13 +397,54 @@ impl Default for TrailSpawnTimer {
 }
 
 #[derive(Component)]
-struct ScoreText;
-
-#[derive(Component)]
 struct MainCamera;
 
 fn setup(mut commands: Commands, player_health: Res<PlayerHealth>) {
     commands.spawn((Camera2dBundle::default(), MainCamera));
+
+    let half = ARENA_BOUNDS * 0.5;
+    let border_thickness = 6.0;
+    let border_color = Color::srgba(0.2, 0.8, 0.9, 0.4);
+
+    // Horizontal borders
+    for y in [-half.y, half.y] {
+        commands.spawn(SpriteBundle {
+            transform: Transform::from_xyz(0.0, y, 0.05).with_scale(Vec3::new(
+                ARENA_BOUNDS.x + border_thickness,
+                border_thickness,
+                1.0,
+            )),
+            sprite: Sprite {
+                color: border_color,
+                custom_size: Some(Vec2::new(
+                    ARENA_BOUNDS.x + border_thickness,
+                    border_thickness,
+                )),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+    }
+
+    // Vertical borders
+    for x in [-half.x, half.x] {
+        commands.spawn(SpriteBundle {
+            transform: Transform::from_xyz(x, 0.0, 0.05).with_scale(Vec3::new(
+                border_thickness,
+                ARENA_BOUNDS.y + border_thickness,
+                1.0,
+            )),
+            sprite: Sprite {
+                color: border_color,
+                custom_size: Some(Vec2::new(
+                    border_thickness,
+                    ARENA_BOUNDS.y + border_thickness,
+                )),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+    }
 
     commands.spawn((
         SpriteBundle {
@@ -262,30 +486,103 @@ fn setup(mut commands: Commands, player_health: Res<PlayerHealth>) {
             top: Val::Px(16.0),
             left: Val::Px(16.0),
             ..Default::default()
-        }),
-        ScoreText,
-    ));
+        })
+        .with_children(|parent| {
+            parent.spawn((
+                TextBundle::from_section(
+                    "Score: 0 | Best: 0",
+                    TextStyle {
+                        font_size: 22.0,
+                        color: Color::WHITE,
+                        ..Default::default()
+                    },
+                ),
+                HudScore,
+            ));
+
+            parent.spawn((
+                TextBundle::from_section(
+                    format!("Health: {}/{}", PLAYER_MAX_HEALTH, PLAYER_MAX_HEALTH),
+                    TextStyle {
+                        font_size: 20.0,
+                        color: Color::srgb(1.0, 0.6, 0.7),
+                        ..Default::default()
+                    },
+                ),
+                HudHealth,
+            ));
+
+            parent.spawn((
+                TextBundle::from_section(
+                    "Combo x1.0 (0)",
+                    TextStyle {
+                        font_size: 18.0,
+                        color: Color::srgb(0.7, 0.9, 1.0),
+                        ..Default::default()
+                    },
+                ),
+                HudCombo,
+            ));
+
+            parent.spawn((
+                TextBundle::from_section(
+                    "Damage x1.0 | Shield: Ready",
+                    TextStyle {
+                        font_size: 18.0,
+                        color: Color::srgb(0.8, 0.8, 0.9),
+                        ..Default::default()
+                    },
+                ),
+                HudBuffs,
+            ));
+
+            parent.spawn((
+                TextBundle::from_section(
+                    "Status: Running",
+                    TextStyle {
+                        font_size: 18.0,
+                        color: Color::srgb(0.6, 0.6, 0.6),
+                        ..Default::default()
+                    },
+                ),
+                HudStatus,
+            ));
+        });
 }
 
 fn update_pointer_target(
+    run_state: Res<RunState>,
+    mut target: ResMut<PointerTarget>,
+    mut motion_events: EventReader<MouseMotion>,
     windows: Query<&Window, With<PrimaryWindow>>,
     camera_query: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
-    mut target: ResMut<PointerTarget>,
 ) {
     let Ok(window) = windows.get_single() else {
         return;
     };
 
-    let Some(cursor_position) = window.cursor_position() else {
-        return;
-    };
+    if let Ok((camera, transform)) = camera_query.get_single() {
+        if let Some(cursor_position) = window.cursor_position() {
+            if let Some(ray) = camera.viewport_to_world(transform, cursor_position) {
+                target.position = ray.origin.truncate();
+                clamp_vec2_to_bounds(&mut target.position);
+            }
+        } else if run_state.is_running() {
+            let mut delta = Vec2::ZERO;
+            for event in motion_events.read() {
+                delta.x += event.delta.x as f32;
+                delta.y -= event.delta.y as f32;
+            }
 
-    let Ok((camera, transform)) = camera_query.get_single() else {
-        return;
-    };
+            if delta.length_squared() > f32::EPSILON {
+                target.position += delta;
+                clamp_vec2_to_bounds(&mut target.position);
+            }
+        }
+    }
 
-    if let Some(ray) = camera.viewport_to_world(transform, cursor_position) {
-        target.0 = Some(ray.origin.truncate());
+    if !run_state.is_running() {
+        motion_events.clear();
     }
 }
 
@@ -295,14 +592,11 @@ fn move_player(
     mut query: Query<&mut Transform, With<Player>>,
     target: Res<PointerTarget>,
 ) {
-    if !run_state.active {
+    if !run_state.is_running() {
         return;
     }
 
-    let Some(target_position) = target.0 else {
-        return;
-    };
-
+    let target_position = target.position;
     let mut transform = query.single_mut();
     let current = transform.translation.truncate();
     let delta = target_position - current;
@@ -325,11 +619,27 @@ fn move_player(
     clamp_to_bounds(&mut transform.translation);
 }
 
+fn tick_shield_state(time: Res<Time>, mut shield: ResMut<ShieldState>) {
+    if let Some(timer) = shield.timer.as_mut() {
+        timer.tick(time.delta());
+        if timer.finished() {
+            shield.clear();
+        }
+    }
+}
+
 fn clamp_to_bounds(translation: &mut Vec3) {
     let half_width = ARENA_BOUNDS.x * 0.5;
     let half_height = ARENA_BOUNDS.y * 0.5;
     translation.x = translation.x.clamp(-half_width, half_width);
     translation.y = translation.y.clamp(-half_height, half_height);
+}
+
+fn clamp_vec2_to_bounds(position: &mut Vec2) {
+    let half_width = ARENA_BOUNDS.x * 0.5;
+    let half_height = ARENA_BOUNDS.y * 0.5;
+    position.x = position.x.clamp(-half_width, half_width);
+    position.y = position.y.clamp(-half_height, half_height);
 }
 
 fn spawn_trail_segments(
@@ -339,7 +649,7 @@ fn spawn_trail_segments(
     mut timer: ResMut<TrailSpawnTimer>,
     player_query: Query<&Transform, With<Player>>,
 ) {
-    if !run_state.active {
+    if !run_state.is_running() {
         return;
     }
 
@@ -395,7 +705,7 @@ fn spawn_enemies(
     mut spawn_timer: ResMut<EnemySpawnTimer>,
     score: Res<Score>,
 ) {
-    if !run_state.active {
+    if !run_state.is_running() {
         return;
     }
 
@@ -449,6 +759,9 @@ fn spawn_enemies(
             ..Default::default()
         },
         Enemy { speed: enemy_speed },
+        EnemyHealth {
+            current: ENEMY_BASE_HEALTH as f32,
+        },
     ));
 }
 
@@ -458,7 +771,7 @@ fn move_enemies(
     player_query: Query<&Transform, (With<Player>, Without<Enemy>)>,
     mut enemies: Query<(&Enemy, &mut Transform), Without<Player>>,
 ) {
-    if !run_state.active {
+    if !run_state.is_running() {
         return;
     }
 
@@ -479,34 +792,44 @@ fn handle_trail_collisions(
     run_state: Res<RunState>,
     mut score: ResMut<Score>,
     mut combo: ResMut<Combo>,
-    enemies: Query<(Entity, &Transform, &Enemy)>,
+    mut rng: Local<Option<StdRng>>,
+    combat: Res<PlayerCombatStats>,
+    mut enemies: Query<(Entity, &Transform, &Enemy, &mut EnemyHealth)>,
     trail: Query<&Transform, With<TrailSegment>>,
 ) {
-    if !run_state.active {
+    if !run_state.is_running() {
         return;
     }
 
-    let mut despawn = Vec::new();
+    let damage = combat.trail_damage();
+    let rng = rng.get_or_insert_with(|| StdRng::from_rng(thread_rng()).unwrap());
+    let mut defeated = Vec::new();
 
-    for (enemy_entity, enemy_transform, _enemy) in &enemies {
+    for (enemy_entity, enemy_transform, _enemy, mut health) in &mut enemies {
         let enemy_pos = enemy_transform.translation.truncate();
-        let mut destroyed = false;
+        let mut hit = false;
         for segment_transform in &trail {
             let diff = enemy_pos - segment_transform.translation.truncate();
             if diff.length_squared() <= TRAIL_HIT_RADIUS * TRAIL_HIT_RADIUS {
-                destroyed = true;
+                hit = true;
                 break;
             }
         }
 
-        if destroyed {
-            score.current += combo.register_kill();
-            despawn.push(enemy_entity);
+        if hit {
+            health.current -= damage;
+            if health.current <= 0.0 {
+                defeated.push((enemy_entity, enemy_pos));
+            }
         }
     }
 
-    for entity in despawn {
-        commands.entity(entity).despawn_recursive();
+    if !defeated.is_empty() {
+        for (entity, position) in defeated {
+            score.current += combo.register_kill();
+            maybe_spawn_power_up(&mut commands, rng, position);
+            commands.entity(entity).despawn_recursive();
+        }
     }
 }
 
@@ -519,7 +842,7 @@ fn handle_player_collisions(
     player_query: Query<&Transform, With<Player>>,
     enemies: Query<(Entity, &Transform), With<Enemy>>,
 ) {
-    if !run_state.active {
+    if !run_state.is_running() {
         return;
     }
 
@@ -542,8 +865,50 @@ fn handle_player_collisions(
     }
 }
 
+fn handle_power_up_pickups(
+    mut commands: Commands,
+    run_state: Res<RunState>,
+    mut player_health: ResMut<PlayerHealth>,
+    mut shield: ResMut<ShieldState>,
+    mut combat: ResMut<PlayerCombatStats>,
+    player_query: Query<&Transform, With<Player>>,
+    mut power_ups: Query<(Entity, &Transform, &PowerUp)>,
+) {
+    if !run_state.is_running() {
+        return;
+    }
+
+    let player_transform = player_query.single();
+    let player_pos = player_transform.translation.truncate();
+
+    for (entity, transform, power_up) in &mut power_ups {
+        let diff = transform.translation.truncate() - player_pos;
+        if diff.length_squared() <= PLAYER_RADIUS * PLAYER_RADIUS {
+            match power_up.kind {
+                PowerUpKind::Heart => player_health.heal(1),
+                PowerUpKind::Shield => shield.activate(),
+                PowerUpKind::Damage => combat.add_bonus(),
+            }
+
+            commands.entity(entity).despawn_recursive();
+        }
+    }
+}
+
+fn tick_power_up_lifetimes(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut power_ups: Query<(Entity, &mut PowerUpLifetime)>,
+) {
+    for (entity, mut lifetime) in &mut power_ups {
+        if lifetime.0.tick(time.delta()).finished() {
+            commands.entity(entity).despawn_recursive();
+        }
+    }
+}
+
 fn tick_combo(time: Res<Time>, mut combo: ResMut<Combo>, run_state: Res<RunState>) {
-    if !run_state.active {
+    if !run_state.is_running() {
         return;
     }
 
@@ -570,11 +935,26 @@ fn update_ui(
         score.current, score.best, combo.multiplier, health.current, health.max
     );
 
-    if run_state.active {
-        text.sections[1].value =
-            "Status: Running\nPress SPACE to restart after a crash.".to_string();
+    let status_text = if !run_state.active {
+        "Status: Down! Press SPACE to respawn.".to_string()
+    } else if run_state.paused {
+        "Status: Paused - Press ESC to resume.".to_string()
     } else {
-        text.sections[1].value = "Status: Down! Press SPACE to respawn.".to_string();
+        "Status: Running".to_string()
+    };
+
+    for (mut text, score_tag, health_tag, combo_tag, buffs_tag, status_tag) in &mut texts {
+        if score_tag.is_some() {
+            text.sections[0].value = format!("Score: {} | Best: {}", score.current, score.best);
+        } else if health_tag.is_some() {
+            text.sections[0].value = format!("Health: {}/{}", health.current, health.max);
+        } else if combo_tag.is_some() {
+            text.sections[0].value = format!("Combo x{:.1} ({})", combo.multiplier, combo.streak);
+        } else if buffs_tag.is_some() {
+            text.sections[0].value = format!("Damage x{:.1} | {}", damage_multiplier, shield_text);
+        } else if status_tag.is_some() {
+            text.sections[0].value = status_text.clone();
+        }
     }
 }
 
@@ -584,6 +964,9 @@ fn handle_restart(
     mut score: ResMut<Score>,
     mut combo: ResMut<Combo>,
     mut pointer: ResMut<PointerTarget>,
+    mut player_health: ResMut<PlayerHealth>,
+    mut shield: ResMut<ShieldState>,
+    mut combat: ResMut<PlayerCombatStats>,
     mut enemy_spawn: ResMut<EnemySpawnTimer>,
     mut trail_timer: ResMut<TrailSpawnTimer>,
     mut health: ResMut<PlayerHealth>,
@@ -601,9 +984,13 @@ fn handle_restart(
     }
 
     run_state.active = true;
+    run_state.paused = false;
     score.current = 0;
     combo.reset();
-    pointer.0 = None;
+    pointer.reset();
+    player_health.reset();
+    shield.clear();
+    combat.reset();
     enemy_spawn.timer = Timer::from_seconds(ENEMY_SPAWN_INTERVAL_START, TimerMode::Repeating);
     trail_timer.0 = Timer::from_seconds(TRAIL_SPAWN_INTERVAL, TimerMode::Repeating);
     health.reset();
@@ -618,4 +1005,83 @@ fn handle_restart(
 
     let mut player_transform = player_query.single_mut();
     player_transform.translation = Vec3::new(0.0, 0.0, player_transform.translation.z);
+    pointer.position = player_transform.translation.truncate();
+}
+
+fn enforce_cursor_lock(
+    run_state: Res<RunState>,
+    mut state: ResMut<CursorLockState>,
+    mut windows: Query<&mut Window, With<PrimaryWindow>>,
+) {
+    let Ok(mut window) = windows.get_single_mut() else {
+        return;
+    };
+
+    if run_state.is_running() {
+        if state.locked {
+            return;
+        }
+
+        window.cursor.visible = false;
+        window.cursor.grab_mode = CursorGrabMode::Locked;
+        state.locked = true;
+    } else if state.locked {
+        window.cursor.visible = true;
+        window.cursor.grab_mode = CursorGrabMode::None;
+        state.locked = false;
+    }
+}
+
+fn handle_pause_toggle(keys: Res<ButtonInput<KeyCode>>, mut run_state: ResMut<RunState>) {
+    if !run_state.active {
+        return;
+    }
+
+    if keys.just_pressed(KeyCode::Escape) {
+        run_state.paused = !run_state.paused;
+    }
+}
+
+fn maybe_spawn_power_up(commands: &mut Commands, rng: &mut StdRng, position: Vec2) {
+    if rng.r#gen::<f32>() > POWER_UP_DROP_CHANCE {
+        return;
+    }
+
+    let total_weight = POWER_UP_HEART_WEIGHT + POWER_UP_SHIELD_WEIGHT + POWER_UP_DAMAGE_WEIGHT;
+    let mut roll = rng.r#gen::<f32>() * total_weight;
+
+    let kind = if roll < POWER_UP_HEART_WEIGHT {
+        PowerUpKind::Heart
+    } else {
+        roll -= POWER_UP_HEART_WEIGHT;
+        if roll < POWER_UP_SHIELD_WEIGHT {
+            PowerUpKind::Shield
+        } else {
+            PowerUpKind::Damage
+        }
+    };
+
+    spawn_power_up(commands, position, kind);
+}
+
+fn spawn_power_up(commands: &mut Commands, position: Vec2, kind: PowerUpKind) {
+    let (color, size) = match kind {
+        PowerUpKind::Heart => (Color::srgba(1.0, 0.3, 0.4, 1.0), Vec2::splat(22.0)),
+        PowerUpKind::Shield => (Color::srgba(0.4, 0.8, 1.0, 1.0), Vec2::splat(24.0)),
+        PowerUpKind::Damage => (Color::srgba(1.0, 0.7, 0.2, 1.0), Vec2::splat(20.0)),
+    };
+
+    commands.spawn((
+        SpriteBundle {
+            transform: Transform::from_xyz(position.x, position.y, 0.12),
+            sprite: Sprite {
+                color,
+                custom_size: Some(size),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        PowerUp { kind },
+        PowerUpLifetime(Timer::from_seconds(POWER_UP_LIFETIME, TimerMode::Once)),
+    ));
 }
