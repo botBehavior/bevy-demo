@@ -53,7 +53,13 @@ These commands align with the workflow expectations and should pass before openi
 trunk serve
 ```
 
-This spins up a hot-reloading dev server at `http://localhost:8080`, compiling the Bevy app to WebAssembly and mounting it on the `<canvas id="bevy-canvas">` element defined in `index.html`.
+This spins up a hot-reloading dev server at `http://localhost:8080`, compiling the Bevy app to WebAssembly and mounting it on the `<canvas id="bevy-canvas">` element defined in `index.html`. Dev builds now run in Cargo's default debug mode so incremental compilation keeps iteration fast.
+
+When you need a production-quality artifact, opt into the optimized pipeline manually:
+
+```bash
+trunk build --release
+```
 
 ### Deploy to Vercel
 

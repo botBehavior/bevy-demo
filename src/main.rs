@@ -104,7 +104,6 @@ fn main() {
 #[cfg(target_arch = "wasm32")]
 fn init_wasm_panic_hooks() {
     console_error_panic_hook::set_once();
-    let _ = console_log::init_with_level(log::Level::Info);
 }
 
 #[cfg(target_arch = "wasm32")]
