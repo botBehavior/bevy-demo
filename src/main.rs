@@ -23,7 +23,7 @@ const ENEMY_SIZE: Vec2 = Vec2::new(36.0, 36.0);
 const COMBO_WINDOW: f32 = 1.2;
 const COMBO_MULTIPLIER_STEP: f32 = 0.5;
 const BASE_SCORE: u32 = 10;
-const ARENA_BOUNDS: Vec2 = Vec2::new(960.0, 720.0);
+const ARENA_BOUNDS: Vec2 = Vec2::new(1024.0, 768.0);
 const ENEMY_BASE_HEALTH: u32 = 4;
 const TRAIL_BASE_DAMAGE: u32 = 1;
 const DAMAGE_POWER_BONUS: f32 = 0.5;
@@ -120,7 +120,7 @@ fn primary_window() -> Window {
 fn primary_window() -> Window {
     Window {
         title: "Threadweaver".to_string(),
-        resolution: WindowResolution::new(ARENA_BOUNDS.x, ARENA_BOUNDS.y),
+        resolution: WindowResolution::new(1024.0, 768.0),
         resizable: true,
         ..Default::default()
     }
@@ -372,8 +372,11 @@ impl Default for TrailSpawnTimer {
 #[derive(Component)]
 struct MainCamera;
 
-fn setup(mut commands: Commands) {
+fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn((Camera2dBundle::default(), MainCamera));
+
+    // Load font for HUD
+    let font = asset_server.load("fonts/FiraSans-Bold.ttf");
 
     let half = ARENA_BOUNDS * 0.5;
     let border_thickness = 6.0;
@@ -450,9 +453,9 @@ fn setup(mut commands: Commands) {
                 TextBundle::from_section(
                     "Score: 0 | Best: 0",
                     TextStyle {
+                        font: font.clone(),
                         font_size: 22.0,
                         color: Color::WHITE,
-                        ..Default::default()
                     },
                 ),
                 HudScore,
@@ -462,9 +465,9 @@ fn setup(mut commands: Commands) {
                 TextBundle::from_section(
                     format!("Health: {}/{}", PLAYER_MAX_HEALTH, PLAYER_MAX_HEALTH),
                     TextStyle {
+                        font: font.clone(),
                         font_size: 20.0,
                         color: Color::srgb(1.0, 0.6, 0.7),
-                        ..Default::default()
                     },
                 ),
                 HudHealth,
@@ -474,9 +477,9 @@ fn setup(mut commands: Commands) {
                 TextBundle::from_section(
                     "Combo x1.0 (0)",
                     TextStyle {
+                        font: font.clone(),
                         font_size: 18.0,
                         color: Color::srgb(0.7, 0.9, 1.0),
-                        ..Default::default()
                     },
                 ),
                 HudCombo,
@@ -486,9 +489,9 @@ fn setup(mut commands: Commands) {
                 TextBundle::from_section(
                     "Damage x1.0 | Shield: Ready",
                     TextStyle {
+                        font: font.clone(),
                         font_size: 18.0,
                         color: Color::srgb(0.8, 0.8, 0.9),
-                        ..Default::default()
                     },
                 ),
                 HudBuffs,
@@ -498,9 +501,9 @@ fn setup(mut commands: Commands) {
                 TextBundle::from_section(
                     "Status: Running",
                     TextStyle {
+                        font: font.clone(),
                         font_size: 18.0,
                         color: Color::srgb(0.6, 0.6, 0.6),
-                        ..Default::default()
                     },
                 ),
                 HudStatus,
@@ -1025,33 +1028,49 @@ fn enforce_cursor_lock(
     run_state: Res<RunState>,
     mut state: ResMut<CursorLockState>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
+    mouse_button: Res<ButtonInput<MouseButton>>,
 ) {
     let Ok(mut window) = windows.get_single_mut() else {
         return;
     };
 
-    if run_state.is_running() {
-        if state.locked {
-            return;
+    // On web, cursor lock requires user interaction
+    // Lock cursor on first click when game is running
+    if run_state.is_running() && !state.locked {
+        if mouse_button.just_pressed(MouseButton::Left) || mouse_button.just_pressed(MouseButton::Right) {
+            window.cursor.visible = false;
+            window.cursor.grab_mode = CursorGrabMode::Locked;
+            state.locked = true;
         }
-
-        window.cursor.visible = false;
-        window.cursor.grab_mode = CursorGrabMode::Locked;
-        state.locked = true;
-    } else if state.locked {
+    } else if !run_state.is_running() && state.locked {
+        // Unlock when game stops or pauses
         window.cursor.visible = true;
         window.cursor.grab_mode = CursorGrabMode::None;
         state.locked = false;
     }
 }
 
-fn handle_pause_toggle(keys: Res<ButtonInput<KeyCode>>, mut run_state: ResMut<RunState>) {
+fn handle_pause_toggle(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut run_state: ResMut<RunState>,
+    mut cursor_state: ResMut<CursorLockState>,
+    mut windows: Query<&mut Window, With<PrimaryWindow>>,
+) {
     if !run_state.active {
         return;
     }
 
     if keys.just_pressed(KeyCode::Escape) {
         run_state.paused = !run_state.paused;
+        
+        // Force cursor unlock when pausing
+        if run_state.paused {
+            if let Ok(mut window) = windows.get_single_mut() {
+                window.cursor.visible = true;
+                window.cursor.grab_mode = CursorGrabMode::None;
+                cursor_state.locked = false;
+            }
+        }
     }
 }
 
