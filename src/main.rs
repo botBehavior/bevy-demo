@@ -49,7 +49,7 @@ const PLAYER_DECELERATION: f32 = 0.25;
 const ENEMY_TURN_SPEED: f32 = 0.18;
 
 // V2: Infinite Space Constants
-const CAMERA_SMOOTHING: f32 = 0.08;
+const CAMERA_SMOOTHING: f32 = 0.30; // V2.6 FIX: Was 0.08 - way too slow!
 const ARENA_SIZE: f32 = 5000.0;
 const ENEMY_SPAWN_DISTANCE: f32 = 600.0;
 
@@ -518,6 +518,10 @@ impl Default for HitFreeze {
     }
 }
 
+// V2.7: Font resource for emoji sprites
+#[derive(Resource)]
+struct GameFont(Handle<Font>);
+
 #[derive(Clone, Copy)]
 enum PowerUpKind {
     Heart,
@@ -546,25 +550,30 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         ScreenShake::default(),
     ));
 
-    // Load font for HUD
+    // Load font for HUD and game entities
     let font = asset_server.load("fonts/FiraSans-Bold.ttf");
+    commands.insert_resource(GameFont(font.clone()));
     
-    // V2.5: Load background image (synthwave grid) - will be dynamically tiled
+    // V2.7: Load background image (4K space image) - will be dynamically tiled
     let background_texture = asset_server.load("240_F_324745441_29s2iZ2NoUgq12WDBQcJ4CRjPn82Kc0D_imgupscaler.ai_General_4K.jpg");
     
-    // V2.5: Spawn initial tiled background (5x5 grid for infinite feel)
+    // V2.7: Spawn initial tiled background (large tiles for infinite feel)
+    // Image is 3840x2158, scale it to fill large space
+    let tile_width = 3840.0;
+    let tile_height = 2158.0;
+    
     for x in -2..=2 {
         for y in -2..=2 {
             commands.spawn((
                 SpriteBundle {
                     texture: background_texture.clone(),
                     transform: Transform::from_xyz(
-                        x as f32 * 1920.0, // Image width
-                        y as f32 * 1080.0, // Image height  
-                        -10.0, // Far back
+                        x as f32 * tile_width,
+                        y as f32 * tile_height,
+                        -100.0, // Far back but visible
                     ),
                     sprite: Sprite {
-                        color: Color::srgba(1.0, 1.0, 1.0, 0.8), // Slightly transparent
+                        color: Color::srgba(1.0, 1.0, 1.0, 0.4), // Dim for atmosphere
                         ..Default::default()
                     },
                     ..Default::default()
@@ -578,13 +587,13 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         }
     }
 
-    // V2: Spawn player with glow effect
+    // V2.7: Player as bright glowing sprite
     commands.spawn((
         SpriteBundle {
-            transform: Transform::from_xyz(0.0, 0.0, 0.2).with_scale(Vec3::splat(1.2)),
+            transform: Transform::from_xyz(0.0, 0.0, 0.2),
             sprite: Sprite {
-                color: Color::srgb(0.8, 1.0, 1.2), // Brighter cyan glow
-                custom_size: Some(Vec2::splat(28.0)),
+                color: Color::srgba(0.4, 1.5, 2.0, 1.0), // SUPER bright cyan glow
+                custom_size: Some(Vec2::splat(32.0)), // Larger player
                 ..Default::default()
             },
             ..Default::default()
@@ -773,7 +782,7 @@ fn move_player(
     time: Res<Time>,
     run_state: Res<RunState>,
     target: Res<PointerTarget>,
-    stats: Res<PlayerCombatStats>, // V2.5: Use accuracy
+    stats: Res<PlayerCombatStats>,
     mut query: Query<(&mut Transform, &mut PlayerVelocity, &Knockback), With<Player>>,
 ) {
     if !run_state.is_running() {
@@ -785,11 +794,17 @@ fn move_player(
     let delta = target.position - current;
     let distance = delta.length();
 
-    // V2.5: Accuracy increases responsiveness (less drift, faster alignment)
-    let accuracy_bonus = stats.accuracy_stacks as f32 * 0.08; // +8% per stack
-    let acceleration = PLAYER_ACCELERATION + accuracy_bonus;
-    let deceleration = PLAYER_DECELERATION + (accuracy_bonus * 1.5); // Stops faster
-    let max_speed = PLAYER_SPEED * (1.0 + accuracy_bonus * 0.5); // Slightly faster
+    // V2.6 FIX: Accuracy as MULTIPLIER (safe), not addition (causes jitter)
+    let accuracy_mult = 1.0 + (stats.accuracy_stacks as f32 * 0.12).min(0.4); // Max 1.4x
+    
+    // V2.6 FIX: Much snappier base values (was 0.12/0.25)
+    let base_accel = 0.2;
+    let base_decel = 0.4;
+    
+    // Apply accuracy as multiplier with HARD CAPS to prevent jitter
+    let acceleration = (base_accel * accuracy_mult).min(0.45);
+    let deceleration = (base_decel * accuracy_mult).min(0.65);
+    let max_speed = PLAYER_SPEED * accuracy_mult;
 
     // Smooth acceleration/deceleration with momentum
     if distance > 5.0 {
@@ -895,8 +910,10 @@ fn update_trail_segments(
     }
 }
 
+// V2.7: Spawn enemies as emoji
 fn spawn_enemies(
     mut commands: Commands,
+    game_font: Res<GameFont>,
     time: Res<Time>,
     run_state: Res<RunState>,
     mut spawn_timer: ResMut<EnemySpawnTimer>,
@@ -933,13 +950,13 @@ fn spawn_enemies(
     let speed_bonus = ENEMY_SPEED_INCREMENT * score.current as f32 / 200.0;
     let enemy_speed = ENEMY_BASE_SPEED + speed_bonus;
 
-    // V2: Brighter enemy color with glow
+    // V2.7: Enemy as bright glowing sprite
     commands.spawn((
         SpriteBundle {
             transform: Transform::from_xyz(position.x, position.y, 0.15),
             sprite: Sprite {
-                color: Color::srgba(1.2, 0.5, 0.6, 1.0), // Brighter for dark background
-                custom_size: Some(ENEMY_SIZE),
+                color: Color::srgba(2.0, 0.3, 0.4, 1.0), // SUPER bright red glow
+                custom_size: Some(Vec2::new(40.0, 36.0)), // Rectangular enemies
                 ..Default::default()
             },
             ..Default::default()
@@ -987,8 +1004,10 @@ fn move_enemies(
     }
 }
 
+// V2.7: Added game_font for power-up spawning
 fn handle_trail_collisions(
     mut commands: Commands,
+    game_font: Res<GameFont>,
     run_state: Res<RunState>,
     mut score: ResMut<Score>,
     mut combo: ResMut<Combo>,
@@ -1048,7 +1067,7 @@ fn handle_trail_collisions(
             // JUICE: Spawn death explosion particles
             spawn_death_explosion(&mut commands, position);
             
-            maybe_spawn_power_up(&mut commands, rng, position);
+            maybe_spawn_power_up(&mut commands, &game_font.0, rng, position);
             commands.entity(entity).despawn_recursive();
         }
     }
@@ -1371,7 +1390,8 @@ fn handle_pause_toggle(
     }
 }
 
-fn maybe_spawn_power_up(commands: &mut Commands, rng: &mut StdRng, position: Vec2) {
+// V2.7: Updated to pass game font for emoji
+fn maybe_spawn_power_up(commands: &mut Commands, game_font: &Handle<Font>, rng: &mut StdRng, position: Vec2) {
     if rng.gen::<f32>() > POWER_UP_DROP_CHANCE {
         return;
     }
@@ -1396,16 +1416,29 @@ fn maybe_spawn_power_up(commands: &mut Commands, rng: &mut StdRng, position: Vec
         }
     };
 
-    spawn_power_up(commands, position, kind);
+    spawn_power_up(commands, game_font, position, kind);
 }
 
-fn spawn_power_up(commands: &mut Commands, position: Vec2, kind: PowerUpKind) {
-    // V2.5: Bright power-ups with glow for dark background
+// V2.7: Spawn power-ups with distinct shapes and colors
+fn spawn_power_up(commands: &mut Commands, _game_font: &Handle<Font>, position: Vec2, kind: PowerUpKind) {
+    // Distinct size and color for each power-up type
     let (color, size) = match kind {
-        PowerUpKind::Heart => (Color::srgba(1.4, 0.4, 0.5, 1.0), Vec2::splat(22.0)), // Bright red glow
-        PowerUpKind::Shield => (Color::srgba(0.6, 1.2, 1.5, 1.0), Vec2::splat(24.0)), // Bright cyan glow
-        PowerUpKind::Damage => (Color::srgba(1.5, 1.0, 0.3, 1.0), Vec2::splat(20.0)), // Bright gold glow
-        PowerUpKind::Accuracy => (Color::srgba(1.2, 0.3, 1.4, 1.0), Vec2::splat(20.0)), // Bright purple target
+        PowerUpKind::Heart => (
+            Color::srgba(2.2, 0.2, 0.3, 1.0),  // SUPER bright red
+            Vec2::splat(26.0)                   // Circle (heart)
+        ),
+        PowerUpKind::Shield => (
+            Color::srgba(0.3, 1.8, 2.2, 1.0),  // SUPER bright cyan
+            Vec2::new(28.0, 32.0)               // Tall rectangle (shield)
+        ),
+        PowerUpKind::Damage => (
+            Color::srgba(2.5, 1.5, 0.2, 1.0),  // SUPER bright gold
+            Vec2::new(22.0, 22.0)               // Diamond shape (sword)
+        ),
+        PowerUpKind::Accuracy => (
+            Color::srgba(2.0, 0.2, 2.2, 1.0),  // SUPER bright purple
+            Vec2::splat(24.0)                   // Circle (target)
+        ),
     };
 
     commands.spawn((
@@ -1443,6 +1476,7 @@ fn camera_follow_player(
 }
 
 // V2.5: Infinite parallax background - dynamically spawn/despawn tiles
+// V2.7: Dynamic background tiling with correct dimensions and parallax depth
 fn update_background_tiles(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -1454,7 +1488,11 @@ fn update_background_tiles(
     };
     
     let camera_pos = camera_transform.translation.truncate();
-    let tile_size = Vec2::new(1920.0, 1080.0);
+    
+    // V2.7: Image is 3840x2158
+    let tile_width = 3840.0;
+    let tile_height = 2158.0;
+    let tile_size = Vec2::new(tile_width, tile_height);
     
     // Calculate which tile grid we're in
     let grid_x = (camera_pos.x / tile_size.x).floor() as i32;
@@ -1490,12 +1528,12 @@ fn update_background_tiles(
                 SpriteBundle {
                     texture: background_texture.clone(),
                     transform: Transform::from_xyz(
-                        gx as f32 * tile_size.x,
-                        gy as f32 * tile_size.y,
-                        -10.0,
+                        gx as f32 * tile_width,
+                        gy as f32 * tile_height,
+                        -100.0, // Far back but visible
                     ),
                     sprite: Sprite {
-                        color: Color::srgba(1.0, 1.0, 1.0, 0.8),
+                        color: Color::srgba(1.0, 1.0, 1.0, 0.4), // Dim for atmosphere
                         ..Default::default()
                     },
                     ..Default::default()
@@ -1522,12 +1560,13 @@ fn toggle_weapon(
     }
 }
 
-// V2.5: Spawn curved wave trails (fish-tail effect)
+// V2.6: Powerful ocean wave casting (COMPLETE REDESIGN)
 fn spawn_wave_projectiles(
     mut commands: Commands,
     time: Res<Time>,
     run_state: Res<RunState>,
     player_query: Query<(&Transform, &PlayerVelocity, &Player)>,
+    mut wave_timer: Local<f32>,
 ) {
     if !run_state.is_running() {
         return;
@@ -1541,16 +1580,17 @@ fn spawn_wave_projectiles(
         return;
     }
     
-    // Only spawn if player is moving (like a fish swimming)
-    if velocity.current.length_squared() < 50.0 {
-        return; // Too slow to generate waves
+    // V2.6 FIX: Lower threshold (was 50.0 - way too high!)
+    if velocity.current.length_squared() < 5000.0 {
+        return;
     }
     
-    // Spawn waves frequently (fish-tail rhythm)
-    let wave_timer = (time.elapsed_seconds() * 12.0) % 1.0;
-    if wave_timer > 0.15 {
-        return; // Only spawn during specific phase
+    // V2.6 FIX: Consistent timing (no modulo gaps)
+    *wave_timer += time.delta_seconds();
+    if *wave_timer < 0.08 {
+        return;
     }
+    *wave_timer = 0.0;
     
     let player_pos = player_transform.translation.truncate();
     let move_dir = velocity.current.normalize_or_zero();
@@ -1559,41 +1599,50 @@ fn spawn_wave_projectiles(
         return;
     }
     
-    // Spawn 2 waves on each side (symmetric fish tail)
+    // V2.6: 6 waves total (3 per side) for POWERFUL visual impact
     for side in [-1.0, 1.0] {
-        // Perpendicular offset (spawn from sides of player)
         let perpendicular = Vec2::new(-move_dir.y, move_dir.x) * side;
-        let spawn_offset = perpendicular * 18.0;
         
-        // Initial velocity: mostly forward, slightly outward
-        let curve_velocity = (move_dir * 0.6 + perpendicular * 0.4) * 350.0;
-        
-        commands.spawn((
-            SpriteBundle {
-                transform: Transform::from_xyz(
-                    player_pos.x + spawn_offset.x,
-                    player_pos.y + spawn_offset.y,
-                    0.15,
-                ),
-                sprite: Sprite {
-                    color: Color::srgba(0.4, 1.0, 1.4, 0.9), // Bright cyan wave
-                    custom_size: Some(Vec2::splat(16.0)),
+        for i in 0..3 {
+            // V2.6: Spawn FAR from player (creates "casting" effect, not "falling off")
+            let distance_out = 35.0 + (i as f32 * 18.0); // 35, 53, 71px out
+            let distance_back = -(i as f32 * 8.0); // Slightly behind
+            let spawn_offset = perpendicular * distance_out + move_dir * distance_back;
+            
+            // V2.6: STRONG outward velocity (creates sweeping arc)
+            let strength = 1.3 - (i as f32 * 0.1); // Inner waves faster
+            let curve_velocity = (perpendicular * strength + move_dir * 0.2) * 500.0;
+            
+            // V2.6: MUCH LARGER particles (was 16px - looked like droplets!)
+            let wave_size = 28.0 + (i as f32 * 10.0); // 28, 38, 48px
+            
+            commands.spawn((
+                SpriteBundle {
+                    transform: Transform::from_xyz(
+                        player_pos.x + spawn_offset.x,
+                        player_pos.y + spawn_offset.y,
+                        0.15,
+                    ),
+                    sprite: Sprite {
+                        color: Color::srgba(0.2, 0.9, 1.6, 1.0), // VERY bright cyan
+                        custom_size: Some(Vec2::splat(wave_size)),
+                        ..Default::default()
+                    },
                     ..Default::default()
                 },
-                ..Default::default()
-            },
-            WaveTrail {
-                spawn_time: time.elapsed_seconds(),
-                lifetime: 1.2,
-                velocity: curve_velocity,
-                curve_amount: side * 180.0, // Curve strength (rollercoaster effect)
-                damage: 2,
-            },
-        ));
+                WaveTrail {
+                    spawn_time: time.elapsed_seconds(),
+                    lifetime: 2.0, // Longer (was 1.2s)
+                    velocity: curve_velocity,
+                    curve_amount: side * 400.0, // MUCH stronger curves (was 180)
+                    damage: 2,
+                },
+            ));
+        }
     }
 }
 
-// V2.5: Update curved wave trails with rollercoaster physics
+// V2.6: Update powerful ocean waves with strong curves
 fn update_wave_projectiles(
     mut commands: Commands,
     time: Res<Time>,
@@ -1609,30 +1658,32 @@ fn update_wave_projectiles(
             continue;
         }
         
-        // Apply curved motion (rollercoaster effect!)
+        // V2.6: STRONGER curved motion (powerful sweeping arcs)
         let curve_perpendicular = Vec2::new(-wave.velocity.y, wave.velocity.x).normalize_or_zero();
         let curve_force = curve_perpendicular * wave.curve_amount * time.delta_seconds();
         wave.velocity += curve_force;
         
-        // Gradually slow down (water resistance)
-        wave.velocity *= 0.985;
+        // V2.6: LESS friction (travels much farther, was 0.985)
+        wave.velocity *= 0.992;
         
         // Move the wave
         transform.translation += wave.velocity.extend(0.0) * time.delta_seconds();
         
-        // Fade out over lifetime
+        // V2.6: SLOWER fade (stays visible longer)
         let life_percent = 1.0 - (age / wave.lifetime);
-        sprite.color.set_alpha(life_percent * 0.9);
+        sprite.color.set_alpha((life_percent * 1.2).min(1.0));
         
-        // Shrink slightly as it fades
-        let scale = 0.7 + life_percent * 0.5;
+        // V2.6: GROWS as it expands (ocean wave effect, was shrinking!)
+        let scale = 1.0 + (1.0 - life_percent) * 0.3;
         transform.scale = Vec3::splat(scale);
     }
 }
 
 // V2.5: Wave trail collision with enemies
+// V2.7: Added game_font for power-up spawning
 fn handle_wave_collisions(
     mut commands: Commands,
+    game_font: Res<GameFont>,
     mut score: ResMut<Score>,
     mut combo: ResMut<Combo>,
     mut rng: Local<Option<StdRng>>,
@@ -1662,7 +1713,7 @@ fn handle_wave_collisions(
                     camera_shake.trauma = (camera_shake.trauma + 0.15).min(1.0);
                     hit_freeze.timer = Timer::from_seconds(HIT_FREEZE_DURATION, TimerMode::Once);
                     spawn_death_explosion(&mut commands, enemy_pos);
-                    maybe_spawn_power_up(&mut commands, rng, enemy_pos);
+                    maybe_spawn_power_up(&mut commands, &game_font.0, rng, enemy_pos);
                     commands.entity(enemy_entity).despawn_recursive();
                 }
                 

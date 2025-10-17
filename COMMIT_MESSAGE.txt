@@ -1,0 +1,124 @@
+feat: Bevy survival game v2.7.1 - Complete implementation
+
+## Summary
+A fast-paced arcade survival game built with Bevy 0.14 featuring:
+- Two weapon types (trail and wave)
+- Power-up system with 4 upgrade types
+- Combo scoring system
+- Infinite parallax background
+- Polished game feel with screen shake, knockback, and particles
+
+## Features Implemented
+
+### Core Gameplay
+- Mouse-controlled player movement with smooth acceleration/deceleration
+- Enemy spawning with difficulty scaling
+- Trail weapon: Deadly follow trail with continuous damage
+- Wave weapon: Curved projectiles that arc outward
+- Health system with collision damage
+- Combo multiplier with 1s window
+- Score tracking with persistent best score
+
+### Power-Up System
+- Heart: Restore 1 health
+- Shield: 4s invincibility (tactical timing)
+- Damage: +50% damage per stack (power fantasy)
+- Accuracy: Faster, snappier movement (quality of life)
+- 15% drop rate for meaningful choices
+
+### Game Feel / Juice
+- Screen shake (intensity scales with combo)
+- Knockback on enemy hits
+- Hit freeze (0.04s pause on kills)
+- Particle death explosions
+- Enemy AI with steering behaviors
+- Player momentum system
+- Camera smooth follow
+
+### Visual Polish
+- Super bright HDR glow effects (>2.0 RGB values)
+- Color-coded entities for instant recognition
+- Distinct shapes per power-up type
+- 4K infinite parallax background
+- Sprite-based particle effects
+
+### Technical
+- Cross-platform (Windows, Mac, Linux, Web/WASM)
+- Bevy ECS architecture
+- Avian2D physics integration
+- Dynamic background tiling
+- Vercel deployment ready
+- ~1800 lines of well-structured Rust
+
+## Version History
+
+### v2.7.1 (Current) - Sprite Rendering Hotfix
+- Fixed: Emoji rendering showing as question marks
+- Fixed: Missing background image
+- Enhanced: Super bright sprite glow effects
+- Improved: Platform compatibility
+
+### v2.6 - Critical UX Fixes
+- Fixed: Jittery accuracy power-up physics
+- Redesigned: Wave weapon for "ocean wave" effect
+- Improved: Camera follow speed and infinite space feel
+
+### v2.5 - Power Fantasy & Visual Polish
+- Added: Accuracy power-up
+- Added: Wave weapon alternative playstyle
+- Added: Infinite parallax background
+- Rebalanced: Power-up rarity and enemy difficulty
+
+### v2.0 - Game Feel Overhaul
+- Implemented: Screen shake, knockback, hit freeze
+- Added: Particle system
+- Improved: Player momentum and enemy AI
+- Expanded: Infinite space arena
+
+### v1.0 - Initial Release
+- Core gameplay loop
+- Basic player/enemy mechanics
+- Trail weapon
+- Power-up system
+
+## Files Changed
+
+### Added
+- CHANGELOG.md (version history)
+- .gitignore (proper exclusions)
+- COMMIT_MESSAGE.txt (this file)
+
+### Modified
+- README.md (comprehensive documentation)
+- PLAY_NOW.txt (quick reference)
+- src/main.rs (v2.7.1 sprite fixes)
+
+### Removed
+- 30+ redundant planning/testing docs
+- 4 backup files from src/
+- Outdated version documentation
+
+## Build Status
+✅ Compiles successfully (cargo build --release)
+✅ WASM builds successfully (trunk build --release)
+⚠️  21 non-critical warnings (unused struct fields)
+
+## How to Play
+```bash
+# Native
+cargo run --release
+
+# Web
+trunk serve --release
+```
+
+## Documentation
+- README.md: Full game guide and technical documentation
+- CHANGELOG.md: Complete version history
+- PLAY_NOW.txt: Quick reference card
+- docs/spec.md: Game design specification
+
+---
+
+Ready for deployment and further development! 🎮🦀
+

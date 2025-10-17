@@ -1,0 +1,29 @@
+╔════════════════════════════════════════════════════════════╗
+║              🎮 BEVY SURVIVOR DEMO - v2.7.1               ║
+╚════════════════════════════════════════════════════════════╝
+
+▶ PLAY:
+  cargo run --release
+
+🎯 CONTROLS:
+  Mouse       - Move/aim
+  Click/Space - Trail weapon (deadly follow trail)
+  Tab         - Wave weapon (curved projectiles)
+  Esc         - Pause/unpause
+
+💎 POWER-UPS:
+  🔴 Circle     - Heart (+1 health)
+  🔵 Tall Rect  - Shield (4s invincibility)
+  🟡 Square     - Damage (+50% per stack)
+  🟣 Circle     - Accuracy (snappier movement)
+
+🎮 TIPS:
+  • Keep moving - survival is mobility
+  • Build combos for 5x score multiplier
+  • Stack damage upgrades for power fantasy
+  • Shield is tactical (only 4s!)
+  • Accuracy makes movement more responsive
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Built with Bevy 0.14 🦀 | See README.md for details

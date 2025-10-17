@@ -1,1 +1,38 @@
-/target
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+# Cargo
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Bevy
+.bevy/
+
+# Trunk (WASM)
+dist/
+.trunk/
+
+# Build artifacts
+*.wasm
+*.wasm.d.ts
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
