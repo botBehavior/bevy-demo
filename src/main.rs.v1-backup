@@ -11,29 +11,28 @@ use std::time::Duration;
 // Physics engine
 use avian2d::prelude::*;
 
-// V2: Rebalanced Core Constants
-const PLAYER_SPEED: f32 = 950.0; // Was 900 - more responsive
+const PLAYER_SPEED: f32 = 900.0;
 const PLAYER_RADIUS: f32 = 14.0;
-const PLAYER_MAX_HEALTH: u32 = 4; // Was 5 - faster deaths
+const PLAYER_MAX_HEALTH: u32 = 5;
 const PLAYER_COLLISION_DAMAGE: u32 = 1;
 const TRAIL_LIFETIME: f32 = 2.6;
 const TRAIL_SPAWN_INTERVAL: f32 = 0.028;
 const TRAIL_HIT_RADIUS: f32 = 16.0;
-const ENEMY_BASE_SPEED: f32 = 180.0; // Was 220 - less overwhelming
+const ENEMY_BASE_SPEED: f32 = 220.0;
 const ENEMY_SPEED_INCREMENT: f32 = 8.0;
-const ENEMY_SPAWN_INTERVAL_START: f32 = 2.0; // Was 1.2 - more breathing room
+const ENEMY_SPAWN_INTERVAL_START: f32 = 1.2;
 const ENEMY_SPAWN_ACCELERATION: f32 = 0.92;
 const ENEMY_SIZE: Vec2 = Vec2::new(36.0, 36.0);
-const COMBO_WINDOW: f32 = 1.0; // Was 1.2 - tighter timing
+const COMBO_WINDOW: f32 = 1.2;
 const COMBO_MULTIPLIER_STEP: f32 = 0.5;
 const BASE_SCORE: u32 = 10;
 const ARENA_BOUNDS: Vec2 = Vec2::new(1024.0, 768.0);
-const ENEMY_BASE_HEALTH: u32 = 3; // Was 4 - easier early game
-const TRAIL_BASE_DAMAGE: u32 = 3; // Was 1 - feel powerful early
+const ENEMY_BASE_HEALTH: u32 = 4;
+const TRAIL_BASE_DAMAGE: u32 = 1;
 const DAMAGE_POWER_BONUS: f32 = 0.5;
-const SHIELD_DURATION: f32 = 4.0; // Was 10 - tactical not invincible
+const SHIELD_DURATION: f32 = 10.0;
 const POWER_UP_LIFETIME: f32 = 12.0;
-const POWER_UP_DROP_CHANCE: f32 = 0.15; // Was 0.35 - rare = special
+const POWER_UP_DROP_CHANCE: f32 = 0.35;
 const POWER_UP_HEART_WEIGHT: f32 = 0.45;
 const POWER_UP_SHIELD_WEIGHT: f32 = 0.3;
 const POWER_UP_DAMAGE_WEIGHT: f32 = 0.25;
@@ -46,28 +45,6 @@ const HIT_FREEZE_DURATION: f32 = 0.04;
 const PLAYER_ACCELERATION: f32 = 0.12;
 const PLAYER_DECELERATION: f32 = 0.25;
 const ENEMY_TURN_SPEED: f32 = 0.18;
-
-// V2: Infinite Space Constants
-const CAMERA_SMOOTHING: f32 = 0.08;
-const ARENA_SIZE: f32 = 5000.0;
-const ENEMY_SPAWN_DISTANCE: f32 = 600.0;
-
-// V2: Wave Weapon Constants
-const WAVE_COOLDOWN: f32 = 0.35;
-const WAVE_PROJECTILE_COUNT: u32 = 5;
-const WAVE_SPREAD_ANGLE: f32 = 0.4;
-const WAVE_SPEED: f32 = 800.0;
-const WAVE_LIFETIME: f32 = 1.5;
-const WAVE_DAMAGE: u32 = 2;
-
-// V2: Rebalanced for Power Fantasy
-const PLAYER_START_HEALTH: u32 = 4; // Was 5
-const PLAYER_BOOSTED_SPEED: f32 = 950.0; // Was 900
-const TRAIL_START_DAMAGE: u32 = 3; // Was 1
-const ENEMY_START_SPEED: f32 = 180.0; // Was 220
-const COMBO_TIGHTER_WINDOW: f32 = 1.0; // Was 1.2
-const SHIELD_TACTICAL_DURATION: f32 = 4.0; // Was 10
-const POWER_UP_RARE_CHANCE: f32 = 0.15; // Was 0.35
 
 fn main() {
     #[cfg(target_arch = "wasm32")]
@@ -107,7 +84,6 @@ fn main() {
         .add_plugins(PhysicsPlugins::default())
         .insert_resource(Gravity(Vec2::ZERO)) // Top-down game, no gravity
         .add_systems(Startup, setup)
-        // Core gameplay systems
         .add_systems(
             Update,
             (
@@ -120,12 +96,6 @@ fn main() {
                 move_enemies,
                 handle_trail_collisions,
                 handle_player_collisions,
-            ),
-        )
-        // UI and management systems
-        .add_systems(
-            Update,
-            (
                 handle_power_up_pickups,
                 tick_power_up_lifetimes,
                 tick_combo,
@@ -133,23 +103,7 @@ fn main() {
                 handle_restart,
                 handle_pause_toggle,
                 enforce_cursor_lock,
-            ),
-        )
-        // V2: New weapon and camera systems
-        .add_systems(
-            Update,
-            (
-                camera_follow_player,
-                toggle_weapon,
-                spawn_wave_projectiles,
-                update_wave_projectiles,
-                handle_wave_collisions,
-            ),
-        )
-        // Game feel systems
-        .add_systems(
-            Update,
-            (
+                // Game feel systems
                 update_screen_shake,
                 apply_knockback,
                 tick_hit_freeze,
@@ -192,27 +146,8 @@ fn primary_window() -> Window {
     }
 }
 
-// V2: Weapon Types
-#[derive(Clone, Copy, PartialEq)]
-enum WeaponType {
-    Trail,
-    Wave,
-}
-
 #[derive(Component)]
-struct Player {
-    weapon_type: WeaponType,
-    wave_cooldown: f32,
-}
-
-impl Default for Player {
-    fn default() -> Self {
-        Self {
-            weapon_type: WeaponType::Trail,
-            wave_cooldown: 0.0,
-        }
-    }
-}
+struct Player;
 
 #[derive(Component)]
 struct Enemy {
@@ -472,18 +407,6 @@ struct Particle {
     lifetime: Timer,
 }
 
-// V2: Wave Projectile
-#[derive(Component)]
-struct WaveProjectile {
-    velocity: Vec2,
-    lifetime: Timer,
-    damage: u32,
-}
-
-// V2: Background Component
-#[derive(Component)]
-struct Background;
-
 #[derive(Resource)]
 struct HitFreeze {
     timer: Timer,
@@ -526,44 +449,62 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 
     // Load font for HUD
     let font = asset_server.load("fonts/FiraSans-Bold.ttf");
-    
-    // V2: Load background image (synthwave grid)
-    let background_texture = asset_server.load("240_F_324745441_29s2iZ2NoUgq12WDBQcJ4CRjPn82Kc0D_imgupscaler.ai_General_4K.jpg");
-    
-    // V2: Spawn tiled background (3x3 grid, repeating)
-    for x in -1..=1 {
-        for y in -1..=1 {
-            commands.spawn((
-                SpriteBundle {
-                    texture: background_texture.clone(),
-                    transform: Transform::from_xyz(
-                        x as f32 * 1920.0, // Image width
-                        y as f32 * 1080.0, // Image height  
-                        -10.0, // Far back
-                    ),
-                    sprite: Sprite {
-                        color: Color::srgba(1.0, 1.0, 1.0, 0.8), // Slightly transparent
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                },
-                Background,
-            ));
-        }
+
+    let half = ARENA_BOUNDS * 0.5;
+    let border_thickness = 6.0;
+    let border_color = Color::srgba(0.2, 0.8, 0.9, 0.4);
+
+    // Horizontal borders
+    for y in [-half.y, half.y] {
+        commands.spawn(SpriteBundle {
+            transform: Transform::from_xyz(0.0, y, 0.05).with_scale(Vec3::new(
+                ARENA_BOUNDS.x + border_thickness,
+                border_thickness,
+                1.0,
+            )),
+            sprite: Sprite {
+                color: border_color,
+                custom_size: Some(Vec2::new(
+                    ARENA_BOUNDS.x + border_thickness,
+                    border_thickness,
+                )),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
     }
 
-    // V2: Spawn player with glow effect
+    // Vertical borders
+    for x in [-half.x, half.x] {
+        commands.spawn(SpriteBundle {
+            transform: Transform::from_xyz(x, 0.0, 0.05).with_scale(Vec3::new(
+                border_thickness,
+                ARENA_BOUNDS.y + border_thickness,
+                1.0,
+            )),
+            sprite: Sprite {
+                color: border_color,
+                custom_size: Some(Vec2::new(
+                    border_thickness,
+                    ARENA_BOUNDS.y + border_thickness,
+                )),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+    }
+
     commands.spawn((
         SpriteBundle {
             transform: Transform::from_xyz(0.0, 0.0, 0.2).with_scale(Vec3::splat(1.2)),
             sprite: Sprite {
-                color: Color::srgb(0.8, 1.0, 1.2), // Brighter cyan glow
+                color: Color::srgb(0.6, 0.9, 1.0),
                 custom_size: Some(Vec2::splat(28.0)),
                 ..Default::default()
             },
             ..Default::default()
         },
-        Player::default(),
+        Player,
         PlayerVelocity {
             current: Vec2::ZERO,
         },
@@ -802,18 +743,9 @@ fn spawn_trail_segments(
     time: Res<Time>,
     run_state: Res<RunState>,
     mut timer: ResMut<TrailSpawnTimer>,
-    player_query: Query<(&Transform, &Player)>,
+    player_query: Query<&Transform, With<Player>>,
 ) {
     if !run_state.is_running() {
-        return;
-    }
-    
-    // V2: Only spawn trail in Trail mode
-    let Ok((transform, player)) = player_query.get_single() else {
-        return;
-    };
-    
-    if player.weapon_type != WeaponType::Trail {
         return;
     }
 
@@ -824,14 +756,14 @@ fn spawn_trail_segments(
 
     timer.0.reset();
 
+    let transform = player_query.single();
     let position = transform.translation;
 
-    // V2: Brighter trail with glow
     commands.spawn((
         SpriteBundle {
             transform: Transform::from_xyz(position.x, position.y, 0.1),
             sprite: Sprite {
-                color: Color::srgba(0.5, 1.2, 1.4, 0.95), // Much brighter cyan
+                color: Color::srgba(0.3, 0.9, 1.0, 0.85),
                 custom_size: Some(Vec2::splat(18.0)),
                 ..Default::default()
             },
@@ -868,7 +800,6 @@ fn spawn_enemies(
     run_state: Res<RunState>,
     mut spawn_timer: ResMut<EnemySpawnTimer>,
     score: Res<Score>,
-    camera_query: Query<&Transform, With<MainCamera>>,
 ) {
     if !run_state.is_running() {
         return;
@@ -885,27 +816,39 @@ fn spawn_enemies(
         .set_duration(Duration::from_secs_f32(new_duration));
     spawn_timer.timer.reset();
 
-    // V2: Spawn relative to camera position (infinite space)
-    let camera_pos = if let Ok(camera_transform) = camera_query.get_single() {
-        camera_transform.translation.truncate()
-    } else {
-        Vec2::ZERO
-    };
-
     let mut rng = thread_rng();
-    let angle = rng.gen::<f32>() * std::f32::consts::TAU; // Random angle around camera
-    let distance = ENEMY_SPAWN_DISTANCE; // Spawn just off-screen
-    let position = camera_pos + Vec2::from_angle(angle) * distance;
+    let spawn_edge = rng.gen_range(0..4);
+    let mut position = Vec2::ZERO;
+    let half_width = ARENA_BOUNDS.x * 0.5;
+    let half_height = ARENA_BOUNDS.y * 0.5;
+
+    match spawn_edge {
+        0 => {
+            position.x = -half_width;
+            position.y = rng.gen_range(-half_height..half_height);
+        }
+        1 => {
+            position.x = half_width;
+            position.y = rng.gen_range(-half_height..half_height);
+        }
+        2 => {
+            position.y = -half_height;
+            position.x = rng.gen_range(-half_width..half_width);
+        }
+        _ => {
+            position.y = half_height;
+            position.x = rng.gen_range(-half_width..half_width);
+        }
+    }
 
     let speed_bonus = ENEMY_SPEED_INCREMENT * score.current as f32 / 200.0;
     let enemy_speed = ENEMY_BASE_SPEED + speed_bonus;
 
-    // V2: Brighter enemy color with glow
     commands.spawn((
         SpriteBundle {
             transform: Transform::from_xyz(position.x, position.y, 0.15),
             sprite: Sprite {
-                color: Color::srgba(1.2, 0.5, 0.6, 1.0), // Brighter for dark background
+                color: Color::srgba(1.0, 0.45, 0.55, 0.95),
                 custom_size: Some(ENEMY_SIZE),
                 ..Default::default()
             },
@@ -1356,11 +1299,10 @@ fn maybe_spawn_power_up(commands: &mut Commands, rng: &mut StdRng, position: Vec
 }
 
 fn spawn_power_up(commands: &mut Commands, position: Vec2, kind: PowerUpKind) {
-    // V2: Much brighter power-ups with glow for dark background
     let (color, size) = match kind {
-        PowerUpKind::Heart => (Color::srgba(1.4, 0.4, 0.5, 1.0), Vec2::splat(22.0)), // Bright red glow
-        PowerUpKind::Shield => (Color::srgba(0.6, 1.2, 1.5, 1.0), Vec2::splat(24.0)), // Bright cyan glow
-        PowerUpKind::Damage => (Color::srgba(1.5, 1.0, 0.3, 1.0), Vec2::splat(20.0)), // Bright gold glow
+        PowerUpKind::Heart => (Color::srgba(1.0, 0.3, 0.4, 1.0), Vec2::splat(22.0)),
+        PowerUpKind::Shield => (Color::srgba(0.4, 0.8, 1.0, 1.0), Vec2::splat(24.0)),
+        PowerUpKind::Damage => (Color::srgba(1.0, 0.7, 0.2, 1.0), Vec2::splat(20.0)),
     };
 
     commands.spawn((
@@ -1376,165 +1318,6 @@ fn spawn_power_up(commands: &mut Commands, position: Vec2, kind: PowerUpKind) {
         PowerUp { kind },
         PowerUpLifetime(Timer::from_seconds(POWER_UP_LIFETIME, TimerMode::Once)),
     ));
-}
-
-// ========== V2: NEW SYSTEMS ==========
-
-// V2: Camera follows player smoothly
-fn camera_follow_player(
-    player_query: Query<&Transform, (With<Player>, Without<MainCamera>)>,
-    mut camera_query: Query<&mut Transform, (With<MainCamera>, Without<Player>)>,
-) {
-    if let Ok(player_transform) = player_query.get_single() {
-        if let Ok(mut camera_transform) = camera_query.get_single_mut() {
-            let target = player_transform.translation.truncate();
-            
-            // Smooth lerp follow
-            camera_transform.translation.x += (target.x - camera_transform.translation.x) * CAMERA_SMOOTHING;
-            camera_transform.translation.y += (target.y - camera_transform.translation.y) * CAMERA_SMOOTHING;
-            camera_transform.translation.z = 999.9; // Keep camera Z fixed
-        }
-    }
-}
-
-// V2: Toggle weapon mode
-fn toggle_weapon(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut player_query: Query<&mut Player>,
-) {
-    if keys.just_pressed(KeyCode::KeyQ) {
-        if let Ok(mut player) = player_query.get_single_mut() {
-            player.weapon_type = match player.weapon_type {
-                WeaponType::Trail => WeaponType::Wave,
-                WeaponType::Wave => WeaponType::Trail,
-            };
-        }
-    }
-}
-
-// V2: Spawn wave projectiles
-fn spawn_wave_projectiles(
-    mut commands: Commands,
-    time: Res<Time>,
-    run_state: Res<RunState>,
-    pointer: Res<PointerTarget>,
-    mut player_query: Query<(&Transform, &mut Player)>,
-) {
-    if !run_state.is_running() {
-        return;
-    }
-    
-    let Ok((player_transform, mut player)) = player_query.get_single_mut() else {
-        return;
-    };
-    
-    if player.weapon_type != WeaponType::Wave {
-        return;
-    }
-    
-    player.wave_cooldown -= time.delta_seconds();
-    
-    if player.wave_cooldown > 0.0 {
-        return;
-    }
-    
-    player.wave_cooldown = WAVE_COOLDOWN;
-    
-    let player_pos = player_transform.translation.truncate();
-    let direction = (pointer.position - player_pos).normalize_or_zero();
-    
-    if direction == Vec2::ZERO {
-        return;
-    }
-    
-    // Spawn projectile burst
-    for i in 0..WAVE_PROJECTILE_COUNT {
-        let angle_offset = (i as f32 - (WAVE_PROJECTILE_COUNT as f32 - 1.0) / 2.0) 
-            * WAVE_SPREAD_ANGLE / (WAVE_PROJECTILE_COUNT as f32);
-        
-        let angle = direction.y.atan2(direction.x) + angle_offset;
-        let rotated_dir = Vec2::new(angle.cos(), angle.sin());
-        let velocity = rotated_dir * WAVE_SPEED;
-        
-        commands.spawn((
-            SpriteBundle {
-                transform: Transform::from_xyz(player_pos.x, player_pos.y, 0.25),
-                sprite: Sprite {
-                    color: Color::srgba(0.5, 1.0, 1.2, 1.0), // Bright cyan glow
-                    custom_size: Some(Vec2::splat(10.0)),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-            WaveProjectile {
-                velocity,
-                lifetime: Timer::from_seconds(WAVE_LIFETIME, TimerMode::Once),
-                damage: WAVE_DAMAGE,
-            },
-        ));
-    }
-}
-
-// V2: Update wave projectiles
-fn update_wave_projectiles(
-    mut commands: Commands,
-    time: Res<Time>,
-    mut projectiles: Query<(Entity, &mut Transform, &mut WaveProjectile)>,
-) {
-    for (entity, mut transform, mut projectile) in &mut projectiles {
-        projectile.lifetime.tick(time.delta());
-        
-        if projectile.lifetime.finished() {
-            commands.entity(entity).despawn_recursive();
-            continue;
-        }
-        
-        transform.translation += projectile.velocity.extend(0.0) * time.delta_seconds();
-    }
-}
-
-// V2: Wave projectile collision with enemies
-fn handle_wave_collisions(
-    mut commands: Commands,
-    mut score: ResMut<Score>,
-    mut combo: ResMut<Combo>,
-    mut rng: Local<Option<StdRng>>,
-    mut hit_freeze: ResMut<HitFreeze>,
-    mut camera_query: Query<&mut ScreenShake, With<MainCamera>>,
-    projectiles: Query<(Entity, &Transform, &WaveProjectile)>,
-    mut enemies: Query<(Entity, &Transform, &mut EnemyHealth, &mut Knockback), With<Enemy>>,
-) {
-    let rng = rng.get_or_insert_with(|| StdRng::from_rng(thread_rng()).unwrap());
-    let mut camera_shake = camera_query.single_mut();
-    
-    for (proj_entity, proj_transform, projectile) in &projectiles {
-        let proj_pos = proj_transform.translation.truncate();
-        
-        for (enemy_entity, enemy_transform, mut health, mut knockback) in &mut enemies {
-            let enemy_pos = enemy_transform.translation.truncate();
-            let distance = proj_pos.distance(enemy_pos);
-            
-            if distance < 25.0 {
-                health.current -= projectile.damage as f32;
-                
-                let knock_dir = (enemy_pos - proj_pos).normalize_or_zero();
-                knockback.velocity = knock_dir * 300.0;
-                
-                commands.entity(proj_entity).despawn_recursive();
-                
-                if health.current <= 0.0 {
-                    score.current += combo.register_kill();
-                    camera_shake.trauma = (camera_shake.trauma + 0.15).min(1.0);
-                    hit_freeze.timer = Timer::from_seconds(HIT_FREEZE_DURATION, TimerMode::Once);
-                    spawn_death_explosion(&mut commands, enemy_pos);
-                    maybe_spawn_power_up(&mut commands, rng, enemy_pos);
-                    commands.entity(enemy_entity).despawn_recursive();
-                }
-                
-                break;
-            }
-        }
-    }
 }
 
 // ========== GAME FEEL SYSTEMS ==========

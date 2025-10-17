@@ -17,12 +17,14 @@ bevy = { version = "0.14", default-features = false, features = [
 ] }
 log = "0.4"
 rand = "0.8"
+avian2d = "0.1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 bevy = { version = "0.14", default-features = false, features = ["x11"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 bevy = { version = "0.14", default-features = false, features = ["webgl2"] }
+avian2d = { version = "0.1", default-features = false, features = ["2d", "f32"] }
 getrandom = { version = "0.3", features = ["std", "wasm_js"] }
 uuid = { version = "1", features = ["std", "rng-getrandom"] }
 console_error_panic_hook = "0.1"
