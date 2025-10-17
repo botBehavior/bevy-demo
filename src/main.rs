@@ -10,8 +10,8 @@ use std::time::Duration;
 
 const PLAYER_SPEED: f32 = 900.0;
 const PLAYER_RADIUS: f32 = 14.0;
-const PLAYER_MAX_HEALTH: i32 = 3;
-const PLAYER_COLLISION_DAMAGE: i32 = 1;
+const PLAYER_MAX_HEALTH: u32 = 5;
+const PLAYER_COLLISION_DAMAGE: u32 = 1;
 const TRAIL_LIFETIME: f32 = 2.6;
 const TRAIL_SPAWN_INTERVAL: f32 = 0.028;
 const TRAIL_HIT_RADIUS: f32 = 16.0;
@@ -21,9 +21,9 @@ const ENEMY_SPAWN_INTERVAL_START: f32 = 1.2;
 const ENEMY_SPAWN_ACCELERATION: f32 = 0.92;
 const ENEMY_SIZE: Vec2 = Vec2::new(36.0, 36.0);
 const COMBO_WINDOW: f32 = 1.2;
+const COMBO_MULTIPLIER_STEP: f32 = 0.5;
 const BASE_SCORE: u32 = 10;
 const ARENA_BOUNDS: Vec2 = Vec2::new(960.0, 720.0);
-const PLAYER_MAX_HEALTH: u32 = 5;
 const ENEMY_BASE_HEALTH: u32 = 4;
 const TRAIL_BASE_DAMAGE: u32 = 1;
 const DAMAGE_POWER_BONUS: f32 = 0.5;
@@ -48,7 +48,6 @@ fn main() {
         .insert_resource(CursorLockState::default())
         .insert_resource(Score::default())
         .insert_resource(Combo::default())
-        .insert_resource(PlayerHealth::default())
         .insert_resource(EnemySpawnTimer::default())
         .insert_resource(TrailSpawnTimer::default())
         .add_plugins({
@@ -143,31 +142,6 @@ struct EnemyHealth {
 #[derive(Component)]
 struct TrailSegment {
     remaining: f32,
-}
-
-#[derive(Resource)]
-struct PlayerHealth {
-    current: i32,
-    max: i32,
-}
-
-impl Default for PlayerHealth {
-    fn default() -> Self {
-        Self {
-            current: PLAYER_MAX_HEALTH,
-            max: PLAYER_MAX_HEALTH,
-        }
-    }
-}
-
-impl PlayerHealth {
-    fn reset(&mut self) {
-        self.current = self.max;
-    }
-
-    fn apply_damage(&mut self, amount: i32) {
-        self.current = (self.current - amount).clamp(0, self.max);
-    }
 }
 
 #[derive(Resource)]
@@ -328,7 +302,7 @@ impl Combo {
         }
         self.timer.reset();
         self.streak += 1;
-        self.multiplier = 1.0 + (self.streak.saturating_sub(1) as f32) * 0.5;
+        self.multiplier = 1.0 + (self.streak.saturating_sub(1) as f32) * COMBO_MULTIPLIER_STEP;
         (BASE_SCORE as f32 * self.multiplier).round() as u32
     }
 
@@ -398,7 +372,7 @@ impl Default for TrailSpawnTimer {
 #[derive(Component)]
 struct MainCamera;
 
-fn setup(mut commands: Commands, player_health: Res<PlayerHealth>) {
+fn setup(mut commands: Commands) {
     commands.spawn((Camera2dBundle::default(), MainCamera));
 
     let half = ARENA_BOUNDS * 0.5;
@@ -458,32 +432,17 @@ fn setup(mut commands: Commands, player_health: Res<PlayerHealth>) {
         Player,
     ));
 
-    commands.spawn((
-        TextBundle::from_sections([
-            TextSection::new(
-                format!(
-                    "Score: 0 | Best: 0 | Combo x1.0 | Health: {}/{}\n",
-                    player_health.current, player_health.max
-                ),
-                TextStyle {
-                    font_size: 22.0,
-                    color: Color::WHITE,
-                    ..Default::default()
-                },
-            ),
-            TextSection::new(
-                "Status: Running\nPress SPACE to restart after a crash.",
-                TextStyle {
-                    font_size: 18.0,
-                    color: Color::srgb(0.6, 0.6, 0.6),
-                    ..Default::default()
-                },
-            ),
-        ])
-        .with_style(Style {
-            position_type: PositionType::Absolute,
-            top: Val::Px(16.0),
-            left: Val::Px(16.0),
+    // HUD Container
+    commands
+        .spawn(NodeBundle {
+            style: Style {
+                position_type: PositionType::Absolute,
+                top: Val::Px(16.0),
+                left: Val::Px(16.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(4.0),
+                ..Default::default()
+            },
             ..Default::default()
         })
         .with_children(|parent| {
@@ -569,8 +528,8 @@ fn update_pointer_target(
         } else if run_state.is_running() {
             let mut delta = Vec2::ZERO;
             for event in motion_events.read() {
-                delta.x += event.delta.x as f32;
-                delta.y -= event.delta.y as f32;
+                delta.x += event.delta.x;
+                delta.y -= event.delta.y;
             }
 
             if delta.length_squared() > f32::EPSILON {
@@ -838,6 +797,7 @@ fn handle_player_collisions(
     mut score: ResMut<Score>,
     mut combo: ResMut<Combo>,
     mut health: ResMut<PlayerHealth>,
+    shield: Res<ShieldState>,
     player_query: Query<&Transform, With<Player>>,
     enemies: Query<(Entity, &Transform), With<Enemy>>,
 ) {
@@ -851,13 +811,17 @@ fn handle_player_collisions(
     for (entity, transform) in &enemies {
         let diff = transform.translation.truncate() - player_pos;
         if diff.length_squared() <= PLAYER_RADIUS * PLAYER_RADIUS {
-            health.apply_damage(PLAYER_COLLISION_DAMAGE);
+            // Despawn enemy regardless of shield
             commands.entity(entity).despawn_recursive();
-            if health.current <= 0 {
-                health.current = 0;
-                run_state.active = false;
-                score.best = score.best.max(score.current);
-                combo.reset();
+
+            // Only apply damage if shield is not active
+            if !shield.is_active() {
+                health.apply_damage(PLAYER_COLLISION_DAMAGE);
+                if health.current == 0 {
+                    run_state.active = false;
+                    score.best = score.best.max(score.current);
+                    combo.reset();
+                }
             }
             break;
         }
@@ -926,34 +890,86 @@ fn update_ui(
     score: Res<Score>,
     combo: Res<Combo>,
     health: Res<PlayerHealth>,
-    mut texts: Query<&mut Text, With<ScoreText>>,
+    shield: Res<ShieldState>,
+    combat: Res<PlayerCombatStats>,
+    mut score_text: Query<&mut Text, With<HudScore>>,
+    mut health_text: Query<
+        &mut Text,
+        (
+            With<HudHealth>,
+            Without<HudScore>,
+            Without<HudCombo>,
+            Without<HudBuffs>,
+            Without<HudStatus>,
+        ),
+    >,
+    mut combo_text: Query<
+        &mut Text,
+        (
+            With<HudCombo>,
+            Without<HudScore>,
+            Without<HudHealth>,
+            Without<HudBuffs>,
+            Without<HudStatus>,
+        ),
+    >,
+    mut buffs_text: Query<
+        &mut Text,
+        (
+            With<HudBuffs>,
+            Without<HudScore>,
+            Without<HudHealth>,
+            Without<HudCombo>,
+            Without<HudStatus>,
+        ),
+    >,
+    mut status_text: Query<
+        &mut Text,
+        (
+            With<HudStatus>,
+            Without<HudScore>,
+            Without<HudHealth>,
+            Without<HudCombo>,
+            Without<HudBuffs>,
+        ),
+    >,
 ) {
-    let mut text = texts.single_mut();
-    text.sections[0].value = format!(
-        "Score: {} | Best: {} | Combo x{:.1} | Health: {}/{}\n",
-        score.current, score.best, combo.multiplier, health.current, health.max
-    );
+    // Update score
+    if let Ok(mut text) = score_text.get_single_mut() {
+        text.sections[0].value = format!("Score: {} | Best: {}", score.current, score.best);
+    }
 
-    let status_text = if !run_state.active {
-        "Status: Down! Press SPACE to respawn.".to_string()
-    } else if run_state.paused {
-        "Status: Paused - Press ESC to resume.".to_string()
-    } else {
-        "Status: Running".to_string()
-    };
+    // Update health
+    if let Ok(mut text) = health_text.get_single_mut() {
+        text.sections[0].value = format!("Health: {}/{}", health.current, health.max);
+    }
 
-    for (mut text, score_tag, health_tag, combo_tag, buffs_tag, status_tag) in &mut texts {
-        if score_tag.is_some() {
-            text.sections[0].value = format!("Score: {} | Best: {}", score.current, score.best);
-        } else if health_tag.is_some() {
-            text.sections[0].value = format!("Health: {}/{}", health.current, health.max);
-        } else if combo_tag.is_some() {
-            text.sections[0].value = format!("Combo x{:.1} ({})", combo.multiplier, combo.streak);
-        } else if buffs_tag.is_some() {
-            text.sections[0].value = format!("Damage x{:.1} | {}", damage_multiplier, shield_text);
-        } else if status_tag.is_some() {
-            text.sections[0].value = status_text.clone();
-        }
+    // Update combo
+    if let Ok(mut text) = combo_text.get_single_mut() {
+        text.sections[0].value = format!("Combo x{:.1} ({})", combo.multiplier, combo.streak);
+    }
+
+    // Update buffs
+    if let Ok(mut text) = buffs_text.get_single_mut() {
+        let damage_multiplier = combat.trail_damage() / combat.base_trail_damage;
+        let shield_text = if let Some(remaining) = shield.remaining_seconds() {
+            format!("Shield: {:.1}s", remaining)
+        } else {
+            "Shield: Ready".to_string()
+        };
+        text.sections[0].value = format!("Damage x{:.1} | {}", damage_multiplier, shield_text);
+    }
+
+    // Update status
+    if let Ok(mut text) = status_text.get_single_mut() {
+        let status = if !run_state.active {
+            "Status: Down! Press SPACE to respawn."
+        } else if run_state.paused {
+            "Status: Paused - Press ESC to resume."
+        } else {
+            "Status: Running"
+        };
+        text.sections[0].value = status.to_string();
     }
 }
 
@@ -963,12 +979,11 @@ fn handle_restart(
     mut score: ResMut<Score>,
     mut combo: ResMut<Combo>,
     mut pointer: ResMut<PointerTarget>,
-    mut player_health: ResMut<PlayerHealth>,
+    mut health: ResMut<PlayerHealth>,
     mut shield: ResMut<ShieldState>,
     mut combat: ResMut<PlayerCombatStats>,
     mut enemy_spawn: ResMut<EnemySpawnTimer>,
     mut trail_timer: ResMut<TrailSpawnTimer>,
-    mut health: ResMut<PlayerHealth>,
     mut player_query: Query<&mut Transform, With<Player>>,
     enemies: Query<Entity, With<Enemy>>,
     trail_segments: Query<Entity, With<TrailSegment>>,
@@ -987,12 +1002,11 @@ fn handle_restart(
     score.current = 0;
     combo.reset();
     pointer.reset();
-    player_health.reset();
+    health.reset();
     shield.clear();
     combat.reset();
     enemy_spawn.timer = Timer::from_seconds(ENEMY_SPAWN_INTERVAL_START, TimerMode::Repeating);
     trail_timer.0 = Timer::from_seconds(TRAIL_SPAWN_INTERVAL, TimerMode::Repeating);
-    health.reset();
 
     for entity in enemies.iter() {
         commands.entity(entity).despawn_recursive();
@@ -1042,12 +1056,12 @@ fn handle_pause_toggle(keys: Res<ButtonInput<KeyCode>>, mut run_state: ResMut<Ru
 }
 
 fn maybe_spawn_power_up(commands: &mut Commands, rng: &mut StdRng, position: Vec2) {
-    if rng.r#gen::<f32>() > POWER_UP_DROP_CHANCE {
+    if rng.gen::<f32>() > POWER_UP_DROP_CHANCE {
         return;
     }
 
     let total_weight = POWER_UP_HEART_WEIGHT + POWER_UP_SHIELD_WEIGHT + POWER_UP_DAMAGE_WEIGHT;
-    let mut roll = rng.r#gen::<f32>() * total_weight;
+    let mut roll = rng.gen::<f32>() * total_weight;
 
     let kind = if roll < POWER_UP_HEART_WEIGHT {
         PowerUpKind::Heart
