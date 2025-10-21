@@ -7,6 +7,7 @@ use bevy::window::WindowResolution;
 use bevy::window::{CursorGrabMode, PrimaryWindow};
 use rand::prelude::*;
 use std::time::Duration;
+use serde::{Deserialize, Serialize};
 
 // Physics engine
 use avian2d::prelude::*;
@@ -31,6 +32,82 @@ const ARENA_BOUNDS: Vec2 = Vec2::new(1024.0, 768.0);
 const ENEMY_BASE_HEALTH: u32 = 3; // Was 4 - easier early game
 const TRAIL_BASE_DAMAGE: u32 = 3; // Base trail damage
 const SHIELD_DURATION: f32 = 4.0; // Was 10 - tactical not invincible
+
+// Shop item definitions
+const SHOP_ITEMS: &[ShopItem] = &[
+    ShopItem {
+        upgrade_type: UpgradeType::LootMagnet,
+        name: "Loot Magnet",
+        description: "Increases pickup radius for power-ups",
+        base_cost: 10,
+        max_level: 3,
+        icon_emoji: "[M]",
+    },
+    ShopItem {
+        upgrade_type: UpgradeType::MaxHealth,
+        name: "Max Health",
+        description: "Permanently increase max health",
+        base_cost: 10,
+        max_level: 5,
+        icon_emoji: "[H]",
+    },
+    ShopItem {
+        upgrade_type: UpgradeType::MovementSpeed,
+        name: "Movement Speed",
+        description: "Increase base movement speed",
+        base_cost: 10,
+        max_level: 3,
+        icon_emoji: "[S]",
+    },
+    ShopItem {
+        upgrade_type: UpgradeType::TrailDuration,
+        name: "Trail Duration",
+        description: "Trail segments last longer",
+        base_cost: 10,
+        max_level: 3,
+        icon_emoji: "[T]",
+    },
+    ShopItem {
+        upgrade_type: UpgradeType::TrailDamage,
+        name: "Trail Damage",
+        description: "Increase trail damage",
+        base_cost: 10,
+        max_level: 2,
+        icon_emoji: "[D]",
+    },
+    ShopItem {
+        upgrade_type: UpgradeType::EnemyKnockback,
+        name: "Enemy Knockback",
+        description: "Stronger enemy knockback on hit",
+        base_cost: 10,
+        max_level: 3,
+        icon_emoji: "[K]",
+    },
+    ShopItem {
+        upgrade_type: UpgradeType::PlayerColorRed,
+        name: "Red Color",
+        description: "Unlock red player color",
+        base_cost: 10,
+        max_level: 1,
+        icon_emoji: "[R]",
+    },
+    ShopItem {
+        upgrade_type: UpgradeType::PlayerColorBlue,
+        name: "Blue Color",
+        description: "Unlock blue player color",
+        base_cost: 10,
+        max_level: 1,
+        icon_emoji: "[B]",
+    },
+    ShopItem {
+        upgrade_type: UpgradeType::PlayerColorPurple,
+        name: "Purple Color",
+        description: "Unlock purple player color",
+        base_cost: 10,
+        max_level: 1,
+        icon_emoji: "[P]",
+    },
+];
 const POWER_UP_LIFETIME: f32 = 12.0;
 const POWER_UP_DROP_CHANCE: f32 = 0.15; // Was 0.35 - rare = special
 const POWER_UP_HEART_WEIGHT: f32 = 0.35; // Rebalanced for currency
@@ -70,6 +147,213 @@ const COMBO_TIGHTER_WINDOW: f32 = 1.0; // Was 1.2
 const SHIELD_TACTICAL_DURATION: f32 = 4.0; // Was 10
 const POWER_UP_RARE_CHANCE: f32 = 0.15; // Was 0.35
 
+fn update_shop_ui_visibility(
+    run_state: Res<RunState>,
+    shop_state: Res<ShopState>,
+    mut visibility_queries: ParamSet<(
+        Query<&mut Visibility, With<ShopButton>>,
+        Query<&mut Visibility, With<ShopModal>>,
+    )>,
+) {
+    let is_game_running = run_state.is_running();
+
+    // Shop button visible only when game is paused
+    if let Ok(mut visibility) = visibility_queries.p0().get_single_mut() {
+        *visibility = if !is_game_running {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+    }
+
+    // Shop modal visible when shop is open (regardless of pause state)
+    if let Ok(mut visibility) = visibility_queries.p1().get_single_mut() {
+        *visibility = if shop_state.is_open {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+    }
+}
+
+fn handle_ui_interactions(
+    mut shop_state: ResMut<ShopState>,
+    mut run_state: ResMut<RunState>,
+    mut interaction_queries: ParamSet<(
+        Query<(&Interaction, &mut BackgroundColor), (With<ShopButton>, Changed<Interaction>)>,
+        Query<(&Interaction, &mut BackgroundColor), (With<CloseShopButton>, Changed<Interaction>)>,
+        Query<(&Interaction, &mut BackgroundColor), (With<ShopItemPurchaseButton>, Changed<Interaction>)>,
+    )>,
+) {
+    // Handle shop button interactions
+    for (interaction, mut color) in &mut interaction_queries.p0() {
+        match *interaction {
+            Interaction::Pressed => {
+                shop_state.is_open = !shop_state.is_open;
+                // Pause/unpause game when shop opens/closes
+                run_state.paused = shop_state.is_open;
+                *color = Color::srgba(0.4, 0.4, 0.4, 0.8).into();
+            }
+            Interaction::Hovered => {
+                *color = Color::srgba(0.3, 0.3, 0.3, 0.8).into();
+            }
+            Interaction::None => {
+                *color = Color::srgba(0.2, 0.2, 0.2, 0.8).into();
+            }
+        }
+    }
+
+    // Handle close shop button interactions
+    for (interaction, mut color) in &mut interaction_queries.p1() {
+        match *interaction {
+            Interaction::Pressed => {
+                shop_state.is_open = false;
+                run_state.paused = false; // Unpause when closing shop
+                *color = Color::srgba(0.7, 0.3, 0.3, 0.8).into();
+            }
+            Interaction::Hovered => {
+                *color = Color::srgba(0.6, 0.2, 0.2, 0.8).into();
+            }
+            Interaction::None => {
+                *color = Color::srgba(0.5, 0.2, 0.2, 0.8).into();
+            }
+        }
+    }
+
+    // Handle shop item purchase button interactions (just visual feedback for now)
+    for (interaction, mut color) in &mut interaction_queries.p2() {
+        match *interaction {
+            Interaction::Pressed => {
+                *color = Color::srgba(0.5, 0.8, 0.5, 0.8).into();
+            }
+            Interaction::Hovered => {
+                *color = Color::srgba(0.4, 0.7, 0.4, 0.8).into();
+            }
+            Interaction::None => {
+                *color = Color::srgba(0.3, 0.6, 0.3, 0.8).into();
+            }
+        }
+    }
+}
+
+fn handle_shop_item_purchase(
+    mut currency: ResMut<Currency>,
+    mut upgrades: ResMut<PurchasedUpgrades>,
+    interaction_query: Query<
+        (&Interaction, &ShopItemButton),
+        Changed<Interaction>,
+    >,
+) {
+    for (interaction, shop_item_button) in &interaction_query {
+        if *interaction == Interaction::Pressed {
+            let cost = calculate_upgrade_cost(shop_item_button.item_type, upgrades.get_current_level(shop_item_button.item_type));
+
+            if currency.spend(cost) {
+                if upgrades.purchase(shop_item_button.item_type) {
+                    // Purchase successful - could add visual feedback here
+                    info!("Successfully purchased {:?}", shop_item_button.item_type);
+                } else {
+                    // Should not happen if UI is correct, but refund if it does
+                    currency.add(cost);
+                    warn!("Purchase failed for {:?}", shop_item_button.item_type);
+                }
+            } else {
+                // Not enough currency - could add visual feedback
+                warn!("Not enough currency for {:?}", shop_item_button.item_type);
+            }
+        }
+    }
+}
+
+fn calculate_upgrade_cost(upgrade_type: UpgradeType, current_level: u32) -> u32 {
+    let shop_item = SHOP_ITEMS.iter().find(|item| item.upgrade_type == upgrade_type);
+
+    if let Some(item) = shop_item {
+        match upgrade_type {
+            UpgradeType::LootMagnet |
+            UpgradeType::MaxHealth |
+            UpgradeType::MovementSpeed |
+            UpgradeType::TrailDuration => {
+                // Exponential scaling: base * (level + 1)²
+                item.base_cost * (current_level + 1).pow(2)
+            },
+            UpgradeType::PlayerColorRed => item.base_cost, // One-time purchase
+            UpgradeType::PlayerColorBlue => item.base_cost * 2,
+            UpgradeType::PlayerColorPurple => item.base_cost * 3,
+            _ => item.base_cost * (current_level + 1), // Linear scaling for others
+        }
+    } else {
+        0
+    }
+}
+
+fn update_shop_item_states(
+    currency: Res<Currency>,
+    upgrades: Res<PurchasedUpgrades>,
+    mut item_buttons: Query<(&ShopItemButton, &mut BackgroundColor)>,
+    mut cost_texts: Query<&mut Text, With<ShopItemCost>>,
+    mut button_texts: Query<&mut Text, (With<ShopItemPurchaseButton>, Without<ShopItemCost>)>,
+) {
+    // Update each shop item based on its type
+    for (shop_button, mut bg) in &mut item_buttons {
+        let current_level = upgrades.get_current_level(shop_button.item_type);
+        let max_level = SHOP_ITEMS.iter()
+            .find(|item| item.upgrade_type == shop_button.item_type)
+            .map(|item| item.max_level)
+            .unwrap_or(1);
+
+        if current_level >= max_level {
+            // Item is maxed out
+            *bg = Color::srgba(0.1, 0.3, 0.1, 0.8).into(); // Dark green for maxed
+        } else {
+            // Item can be upgraded
+            *bg = Color::srgba(0.15, 0.15, 0.15, 0.8).into(); // Normal gray
+        }
+    }
+
+    // Update cost texts and button states
+    let mut cost_text_iter = cost_texts.iter_mut();
+    let mut button_text_iter = button_texts.iter_mut();
+
+    for shop_item in SHOP_ITEMS.iter() {
+        let current_level = upgrades.get_current_level(shop_item.upgrade_type);
+        let cost = calculate_upgrade_cost(shop_item.upgrade_type, current_level);
+        let can_afford = currency.current >= cost;
+        let can_purchase = current_level < shop_item.max_level;
+
+        // Update cost text
+        if let Some(mut text) = cost_text_iter.next() {
+            if can_purchase {
+                text.sections[0].value = format!("💰 {}", cost);
+                text.sections[0].style.color = if can_afford {
+                    Color::srgba(1.0, 0.8, 0.0, 1.0) // Gold if can afford
+                } else {
+                    Color::srgba(0.7, 0.3, 0.3, 1.0) // Red if can't afford
+                };
+            } else {
+                text.sections[0].value = "MAX".to_string();
+                text.sections[0].style.color = Color::srgba(0.3, 0.7, 0.3, 1.0); // Green for maxed
+            }
+        }
+
+        // Update button text
+        if let Some(mut text) = button_text_iter.next() {
+            if can_purchase {
+                if can_afford {
+                    text.sections[0].value = "BUY".to_string();
+                    text.sections[0].style.color = Color::WHITE;
+                } else {
+                    text.sections[0].value = "NEED COINS".to_string();
+                    text.sections[0].style.color = Color::srgba(0.8, 0.8, 0.8, 1.0);
+                }
+            } else {
+                text.sections[0].value = "MAXED".to_string();
+                text.sections[0].style.color = Color::srgba(0.3, 0.8, 0.3, 1.0);
+            }
+        }
+    }
+}
+
 fn main() {
     #[cfg(target_arch = "wasm32")]
     init_wasm_panic_hooks();
@@ -83,7 +367,9 @@ fn main() {
         .insert_resource(ShieldState::default())
         .insert_resource(CursorLockState::default())
         .insert_resource(Score::default())
-        .insert_resource(Currency::default()) // NEW: Persistent currency
+        .insert_resource(Currency::default()) // Persistent currency
+        .insert_resource(load_purchased_upgrades()) // Persistent upgrades
+        .insert_resource(ShopState::default()) // Shop modal state
         .insert_resource(Combo::default())
         .insert_resource(EnemySpawnTimer::default())
         .insert_resource(TrailSpawnTimer::default())
@@ -108,7 +394,7 @@ fn main() {
         // Physics engine (Avian2D)
         .add_plugins(PhysicsPlugins::default())
         .insert_resource(Gravity(Vec2::ZERO)) // Top-down game, no gravity
-        .add_systems(Startup, setup)
+        .add_systems(Startup, (setup, setup_shop_ui).chain())
         // Core gameplay systems
         .add_systems(
             Update,
@@ -133,6 +419,10 @@ fn main() {
                 tick_combo,
                 tick_wave_blast_timer, // Update wave blast timer
                 update_ui,
+                update_shop_ui_visibility,
+                handle_ui_interactions,
+                handle_shop_item_purchase,
+                update_shop_item_states,
                 handle_restart,
                 handle_pause_toggle,
                 enforce_cursor_lock,
@@ -147,6 +437,7 @@ fn main() {
                 update_weapon_type, // NEW: Auto-switch based on wave blast
                 spawn_wave_projectiles,
                 update_wave_projectiles,
+                update_particles,
                 handle_wave_collisions,
             ),
         )
@@ -212,6 +503,80 @@ fn load_currency_from_storage() -> u32 {
 #[cfg(not(target_arch = "wasm32"))]
 fn save_currency_to_storage(_currency: u32) {
     // No persistence on desktop for now
+}
+
+#[cfg(target_arch = "wasm32")]
+fn load_upgrades_from_storage() -> PurchasedUpgrades {
+    use wasm_bindgen::JsCast;
+    use web_sys::{window, Storage};
+
+    if let Some(window) = window() {
+        if let Ok(Some(storage)) = window.local_storage() {
+            if let Ok(Some(json)) = storage.get_item("threadweaver_upgrades") {
+                if let Ok(upgrades) = serde_json::from_str(&json) {
+                    return upgrades;
+                }
+            }
+        }
+    }
+    // Return default values, not PurchasedUpgrades::default() to avoid infinite recursion
+    PurchasedUpgrades {
+        loot_magnet_level: 0,
+        max_health_level: 0,
+        shield_duration_level: 0,
+        movement_speed_level: 0,
+        acceleration_level: 0,
+        turn_speed_level: 0,
+        trail_duration_level: 0,
+        trail_density_level: 0,
+        trail_damage_level: 0,
+        enemy_knockback_level: 0,
+        unlocked_colors: vec![PlayerColor::Default],
+        screen_shake_level: 0,
+        combo_window_level: 0,
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn save_upgrades_to_storage(upgrades: &PurchasedUpgrades) {
+    use wasm_bindgen::JsCast;
+    use web_sys::{window, Storage};
+
+    if let Some(window) = window() {
+        if let Ok(Some(storage)) = window.local_storage() {
+            if let Ok(json) = serde_json::to_string(upgrades) {
+                let _ = storage.set_item("threadweaver_upgrades", &json);
+            }
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn load_upgrades_from_storage() -> PurchasedUpgrades {
+    PurchasedUpgrades {
+        loot_magnet_level: 0,
+        max_health_level: 0,
+        shield_duration_level: 0,
+        movement_speed_level: 0,
+        acceleration_level: 0,
+        turn_speed_level: 0,
+        trail_duration_level: 0,
+        trail_density_level: 0,
+        trail_damage_level: 0,
+        enemy_knockback_level: 0,
+        unlocked_colors: vec![PlayerColor::Default],
+        screen_shake_level: 0,
+        combo_window_level: 0,
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn save_upgrades_to_storage(_upgrades: &PurchasedUpgrades) {
+    // No persistence on desktop for now
+}
+
+fn load_purchased_upgrades() -> PurchasedUpgrades {
+    load_upgrades_from_storage()
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -415,8 +780,11 @@ impl Default for PlayerCombatStats {
 }
 
 impl PlayerCombatStats {
-    fn trail_damage(&self) -> f32 {
-        self.base_trail_damage as f32 // Simplified - no multipliers
+    fn trail_damage(&self, upgrades: &PurchasedUpgrades) -> f32 {
+        let base = self.base_trail_damage;
+        let accuracy_mult = 1.0 + (self.accuracy_stacks as f32 * 0.25); // +25% per accuracy stack
+        let upgrade_mult = 1.0 + (upgrades.trail_damage_level as f32 * 0.25); // +25% per shop level
+        base * accuracy_mult * upgrade_mult
     }
 
     fn activate_wave_blast(&mut self) {
@@ -475,6 +843,152 @@ impl Currency {
     fn add(&mut self, amount: u32) {
         self.current += amount;
         self.save();
+    }
+
+    fn spend(&mut self, amount: u32) -> bool {
+        if self.current >= amount {
+            self.current -= amount;
+            self.save();
+            true
+        } else {
+            false
+        }
+    }
+}
+
+#[derive(Resource, Clone, Serialize, Deserialize)]
+struct PurchasedUpgrades {
+    // Combat & Survival
+    loot_magnet_level: u32,      // 0-3, pickup radius multiplier
+    max_health_level: u32,       // 0-5, +1 health per level
+    shield_duration_level: u32,  // 0-3, +1 second per level
+
+    // Movement & Control
+    movement_speed_level: u32,   // 0-3, +10% speed per level
+    acceleration_level: u32,     // 0-2, +25% accel per level
+    turn_speed_level: u32,       // 0-2, -15% enemy turn speed per level
+
+    // Trail & Combat
+    trail_duration_level: u32,   // 0-3, +25% duration per level
+    trail_density_level: u32,    // 0-2, +50% segments per level
+    trail_damage_level: u32,     // 0-2, +25% damage per level
+    enemy_knockback_level: u32,  // 0-3, +50% knockback per level
+
+    // Visual & Cosmetic
+    unlocked_colors: Vec<PlayerColor>, // Available color options
+
+    // Quality of Life
+    screen_shake_level: u32,     // 0-2, -20% shake per level
+    combo_window_level: u32,     // 0-2, +0.5s window per level
+}
+
+impl Default for PurchasedUpgrades {
+    fn default() -> Self {
+        Self {
+            loot_magnet_level: 0,
+            max_health_level: 0,
+            shield_duration_level: 0,
+            movement_speed_level: 0,
+            acceleration_level: 0,
+            turn_speed_level: 0,
+            trail_duration_level: 0,
+            trail_density_level: 0,
+            trail_damage_level: 0,
+            enemy_knockback_level: 0,
+            unlocked_colors: vec![PlayerColor::Default],
+            screen_shake_level: 0,
+            combo_window_level: 0,
+        }
+    }
+}
+
+impl PurchasedUpgrades {
+    fn save(&self) {
+        save_upgrades_to_storage(self);
+    }
+
+    fn can_purchase(&self, upgrade_type: UpgradeType) -> bool {
+        match upgrade_type {
+            UpgradeType::LootMagnet => self.loot_magnet_level < 3,
+            UpgradeType::MaxHealth => self.max_health_level < 5,
+            UpgradeType::ShieldDuration => self.shield_duration_level < 3,
+            UpgradeType::MovementSpeed => self.movement_speed_level < 3,
+            UpgradeType::Acceleration => self.acceleration_level < 2,
+            UpgradeType::TurnSpeed => self.turn_speed_level < 2,
+            UpgradeType::TrailDuration => self.trail_duration_level < 3,
+            UpgradeType::TrailDensity => self.trail_density_level < 2,
+            UpgradeType::TrailDamage => self.trail_damage_level < 2,
+            UpgradeType::EnemyKnockback => self.enemy_knockback_level < 3,
+            UpgradeType::PlayerColorRed => !self.unlocked_colors.contains(&PlayerColor::Red),
+            UpgradeType::PlayerColorBlue => !self.unlocked_colors.contains(&PlayerColor::Blue),
+            UpgradeType::PlayerColorPurple => !self.unlocked_colors.contains(&PlayerColor::Purple),
+            UpgradeType::ScreenShake => self.screen_shake_level < 2,
+            UpgradeType::ComboWindow => self.combo_window_level < 2,
+        }
+    }
+
+    fn purchase(&mut self, upgrade_type: UpgradeType) -> bool {
+        if !self.can_purchase(upgrade_type) {
+            return false;
+        }
+
+        match upgrade_type {
+            UpgradeType::LootMagnet => self.loot_magnet_level += 1,
+            UpgradeType::MaxHealth => self.max_health_level += 1,
+            UpgradeType::ShieldDuration => self.shield_duration_level += 1,
+            UpgradeType::MovementSpeed => self.movement_speed_level += 1,
+            UpgradeType::Acceleration => self.acceleration_level += 1,
+            UpgradeType::TurnSpeed => self.turn_speed_level += 1,
+            UpgradeType::TrailDuration => self.trail_duration_level += 1,
+            UpgradeType::TrailDensity => self.trail_density_level += 1,
+            UpgradeType::TrailDamage => self.trail_damage_level += 1,
+            UpgradeType::EnemyKnockback => self.enemy_knockback_level += 1,
+            UpgradeType::PlayerColorRed => self.unlocked_colors.push(PlayerColor::Red),
+            UpgradeType::PlayerColorBlue => self.unlocked_colors.push(PlayerColor::Blue),
+            UpgradeType::PlayerColorPurple => self.unlocked_colors.push(PlayerColor::Purple),
+            UpgradeType::ScreenShake => self.screen_shake_level += 1,
+            UpgradeType::ComboWindow => self.combo_window_level += 1,
+        }
+
+        self.save();
+        true
+    }
+
+    fn get_current_level(&self, upgrade_type: UpgradeType) -> u32 {
+        match upgrade_type {
+            UpgradeType::LootMagnet => self.loot_magnet_level,
+            UpgradeType::MaxHealth => self.max_health_level,
+            UpgradeType::ShieldDuration => self.shield_duration_level,
+            UpgradeType::MovementSpeed => self.movement_speed_level,
+            UpgradeType::Acceleration => self.acceleration_level,
+            UpgradeType::TurnSpeed => self.turn_speed_level,
+            UpgradeType::TrailDuration => self.trail_duration_level,
+            UpgradeType::TrailDensity => self.trail_density_level,
+            UpgradeType::TrailDamage => self.trail_damage_level,
+            UpgradeType::EnemyKnockback => self.enemy_knockback_level,
+            UpgradeType::PlayerColorRed |
+            UpgradeType::PlayerColorBlue |
+            UpgradeType::PlayerColorPurple => {
+                if self.can_purchase(upgrade_type) { 0 } else { 1 }
+            },
+            UpgradeType::ScreenShake => self.screen_shake_level,
+            UpgradeType::ComboWindow => self.combo_window_level,
+        }
+    }
+}
+
+#[derive(Resource)]
+struct ShopState {
+    is_open: bool,
+    selected_item: Option<UpgradeType>,
+}
+
+impl Default for ShopState {
+    fn default() -> Self {
+        Self {
+            is_open: false,
+            selected_item: None,
+        }
     }
 }
 
@@ -548,6 +1062,44 @@ struct HudBuffs;
 struct HudStatus;
 
 #[derive(Component)]
+struct ShopButton;
+
+#[derive(Component)]
+struct ShopButtonText;
+
+#[derive(Component)]
+struct ShopModal;
+
+#[derive(Component)]
+struct ShopModalBackground;
+
+#[derive(Component)]
+struct ShopModalContent;
+
+#[derive(Component)]
+struct CloseShopButton;
+
+#[derive(Component)]
+struct ShopItemButton {
+    item_type: UpgradeType,
+}
+
+#[derive(Component)]
+struct ShopItemIcon;
+
+#[derive(Component)]
+struct ShopItemName;
+
+#[derive(Component)]
+struct ShopItemDescription;
+
+#[derive(Component)]
+struct ShopItemCost;
+
+#[derive(Component)]
+struct ShopItemPurchaseButton;
+
+#[derive(Component)]
 struct HudHealthBar;
 
 #[derive(Component)]
@@ -565,7 +1117,6 @@ struct Particle {
     lifetime: Timer,
 }
 
-// V2: Wave Projectile (OLD - being replaced)
 #[derive(Component)]
 struct WaveProjectile {
     velocity: Vec2,
@@ -618,6 +1169,60 @@ enum PowerUpKind {
     Currency, // NEW: Persistent currency power-up
     Accuracy, // V2.5: New power-up
     WaveBlast, // Wave weapon power-up
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum UpgradeType {
+    // Combat & Survival
+    LootMagnet,        // Increases pickup radius
+    MaxHealth,         // Permanent health increase
+    ShieldDuration,    // Longer shield duration
+
+    // Movement & Control
+    MovementSpeed,     // Base movement speed
+    Acceleration,      // Faster acceleration/deceleration
+    TurnSpeed,         // Enemy turning speed reduction
+
+    // Trail & Combat
+    TrailDuration,     // Longer trail lifetime
+    TrailDensity,      // More trail segments
+    TrailDamage,       // Increased trail damage
+    EnemyKnockback,    // Increase enemy knockback
+
+    // Visual & Cosmetic
+    PlayerColorRed,    // Unlock red player color
+    PlayerColorBlue,   // Unlock blue player color
+    PlayerColorPurple, // Unlock purple player color
+
+    // Quality of Life
+    ScreenShake,       // Reduce screen shake intensity
+    ComboWindow,       // Longer combo timing window
+}
+
+#[derive(Clone)]
+struct ShopItem {
+    upgrade_type: UpgradeType,
+    name: &'static str,
+    description: &'static str,
+    base_cost: u32,
+    max_level: u32,
+    icon_emoji: &'static str,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum UpgradeCategory {
+    Combat,
+    Movement,
+    Visual,
+    QualityOfLife,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+enum PlayerColor {
+    Default, // Original cyan
+    Red,
+    Blue,
+    Purple,
 }
 
 impl Default for TrailSpawnTimer {
@@ -846,6 +1451,299 @@ fn spawn_pickup_ring(commands: &mut Commands, position: Vec2, color: Color) {
     }
 }
 
+fn create_shop_card(parent: &mut ChildBuilder, shop_item: &ShopItem, font: &Res<GameFont>) {
+    parent.spawn((
+        NodeBundle {
+            style: Style {
+                width: Val::Px(200.0),
+                height: Val::Px(160.0),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::SpaceBetween,
+                padding: UiRect::all(Val::Px(12.0)),
+                margin: UiRect::horizontal(Val::Px(8.0)),
+                border: UiRect::all(Val::Px(2.0)),
+                ..Default::default()
+            },
+            background_color: Color::srgba(0.12, 0.12, 0.12, 0.9).into(),
+            border_color: Color::srgba(0.3, 0.3, 0.3, 0.5).into(),
+            ..Default::default()
+        },
+        ShopItemButton {
+            item_type: shop_item.upgrade_type,
+        },
+    )).with_children(|card| {
+        // Top section with icon and name
+        card.spawn(NodeBundle {
+            style: Style {
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                margin: UiRect::bottom(Val::Px(8.0)),
+                ..Default::default()
+            },
+            ..Default::default()
+        }).with_children(|top| {
+            // Icon
+            top.spawn(TextBundle::from_section(
+                shop_item.icon_emoji,
+                TextStyle {
+                    font: font.0.clone(),
+                    font_size: 32.0,
+                    color: Color::WHITE,
+                },
+            ));
+
+            // Item name
+            top.spawn(TextBundle::from_section(
+                shop_item.name,
+                TextStyle {
+                    font: font.0.clone(),
+                    font_size: 16.0,
+                    color: Color::WHITE,
+                },
+            ));
+        });
+
+        // Description (centered)
+        card.spawn(NodeBundle {
+            style: Style {
+                flex_grow: 1.0,
+                justify_content: JustifyContent::Center,
+                ..Default::default()
+            },
+            ..Default::default()
+        }).with_children(|middle| {
+            middle.spawn(TextBundle::from_section(
+                shop_item.description,
+                TextStyle {
+                    font: font.0.clone(),
+                    font_size: 12.0,
+                    color: Color::srgba(0.8, 0.8, 0.8, 1.0),
+                },
+            ));
+        });
+
+        // Bottom section with cost and button
+        card.spawn(NodeBundle {
+            style: Style {
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Stretch,
+                ..Default::default()
+            },
+            ..Default::default()
+        }).with_children(|bottom| {
+            // Cost display
+            bottom.spawn(TextBundle::from_section(
+                format!("💰 {}", shop_item.base_cost),
+                TextStyle {
+                    font: font.0.clone(),
+                    font_size: 14.0,
+                    color: Color::srgba(1.0, 0.8, 0.0, 1.0),
+                },
+            ));
+
+            // Buy button
+            bottom.spawn((
+                ButtonBundle {
+                    style: Style {
+                        height: Val::Px(32.0),
+                        margin: UiRect::top(Val::Px(6.0)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..Default::default()
+                    },
+                    background_color: Color::srgba(0.25, 0.6, 0.25, 0.9).into(),
+                    ..Default::default()
+                },
+                ShopItemPurchaseButton,
+            )).with_children(|button| {
+                button.spawn(TextBundle::from_section(
+                    "BUY",
+                    TextStyle {
+                        font: font.0.clone(),
+                        font_size: 14.0,
+                        color: Color::WHITE,
+                    },
+                ));
+            });
+        });
+    });
+}
+
+fn setup_shop_ui(mut commands: Commands, font: Res<GameFont>) {
+    // Shop Button - Bottom center, below HUD area
+    commands
+        .spawn((
+            ButtonBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    bottom: Val::Px(20.0),
+                    left: Val::Percent(50.0),
+                    margin: UiRect::left(Val::Px(-75.0)), // Center horizontally
+                    width: Val::Px(150.0),
+                    height: Val::Px(50.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    ..Default::default()
+                },
+                background_color: Color::srgba(0.2, 0.2, 0.2, 0.8).into(),
+                ..Default::default()
+            },
+            ShopButton,
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                TextBundle::from_section(
+                    "SHOP 💰",
+                    TextStyle {
+                        font: font.0.clone(),
+                        font_size: 24.0,
+                        color: Color::WHITE,
+                    },
+                ),
+                ShopButtonText,
+            ));
+        });
+
+    // Shop Modal Background (hidden by default)
+    commands
+        .spawn((
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    top: Val::Px(0.0),
+                    left: Val::Px(0.0),
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    ..Default::default()
+                },
+                background_color: Color::srgba(0.0, 0.0, 0.0, 0.7).into(),
+                visibility: Visibility::Hidden,
+                ..Default::default()
+            },
+            ShopModal,
+            ShopModalBackground,
+        ))
+        .with_children(|parent| {
+            // Shop Modal Content - Make it wider for better layout
+            parent
+                .spawn((
+                    NodeBundle {
+                        style: Style {
+                            width: Val::Px(800.0),
+                            height: Val::Px(500.0),
+                            flex_direction: FlexDirection::Column,
+                            padding: UiRect::all(Val::Px(20.0)),
+                            ..Default::default()
+                        },
+                        background_color: Color::srgba(0.08, 0.08, 0.08, 0.98).into(),
+                        ..Default::default()
+                    },
+                    ShopModalContent,
+                ))
+                .with_children(|parent| {
+                    // Close Button - top right
+                    parent.spawn((
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                top: Val::Px(15.0),
+                                right: Val::Px(15.0),
+                                width: Val::Px(35.0),
+                                height: Val::Px(35.0),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..Default::default()
+                            },
+                            background_color: Color::srgba(0.6, 0.2, 0.2, 0.9).into(),
+                            ..Default::default()
+                        },
+                        CloseShopButton,
+                    )).with_children(|btn| {
+                        btn.spawn(TextBundle::from_section(
+                            "×",
+                            TextStyle {
+                                font: font.0.clone(),
+                                font_size: 24.0,
+                                color: Color::WHITE,
+                            },
+                        ));
+                    });
+
+                    // Shop Title
+                    parent.spawn(TextBundle::from_section(
+                        "🛒 UPGRADE SHOP",
+                        TextStyle {
+                            font: font.0.clone(),
+                            font_size: 36.0,
+                            color: Color::WHITE,
+                        },
+                    ));
+
+                    // Shop Items Grid - Fixed size cards to prevent overlapping
+                    parent.spawn(NodeBundle {
+                        style: Style {
+                            display: Display::Flex,
+                            flex_direction: FlexDirection::Column,
+                            align_items: AlignItems::Center,
+                            flex_grow: 1.0,
+                            margin: UiRect::vertical(Val::Px(20.0)),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }).with_children(|container| {
+                        // First row - 3 cards
+                        container.spawn(NodeBundle {
+                            style: Style {
+                                display: Display::Flex,
+                                justify_content: JustifyContent::Center,
+                                margin: UiRect::bottom(Val::Px(15.0)),
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        }).with_children(|row| {
+                            for i in 0..3 {
+                                let shop_item = &SHOP_ITEMS[i];
+                                create_shop_card(row, shop_item, &font);
+                            }
+                        });
+
+                        // Second row - 3 cards
+                        container.spawn(NodeBundle {
+                            style: Style {
+                                display: Display::Flex,
+                                justify_content: JustifyContent::Center,
+                                margin: UiRect::bottom(Val::Px(15.0)),
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        }).with_children(|row| {
+                            for i in 3..6 {
+                                let shop_item = &SHOP_ITEMS[i];
+                                create_shop_card(row, shop_item, &font);
+                            }
+                        });
+
+                        // Third row - 3 cards
+                        container.spawn(NodeBundle {
+                            style: Style {
+                                display: Display::Flex,
+                                justify_content: JustifyContent::Center,
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        }).with_children(|row| {
+                            for i in 6..9 {
+                                let shop_item = &SHOP_ITEMS[i];
+                                create_shop_card(row, shop_item, &font);
+                            }
+                        });
+                    });
+                });
+        });
+}
+
 fn update_pointer_target(
     run_state: Res<RunState>,
     mut target: ResMut<PointerTarget>,
@@ -1065,6 +1963,11 @@ fn spawn_enemies(
     let speed_bonus = ENEMY_SPEED_INCREMENT * score.current as f32 / 200.0;
     let enemy_speed = ENEMY_BASE_SPEED + speed_bonus;
 
+    // Scale enemy health with score progression
+    let base_health = ENEMY_BASE_HEALTH as f32; // 3.0
+    let health_scaling = 1.0 + (score.current as f32 / 500.0); // +1 HP every 500 points
+    let enemy_health = base_health * health_scaling;
+
     // V2.7: Enemy as bright glowing sprite
     commands.spawn((
         SpriteBundle {
@@ -1078,7 +1981,7 @@ fn spawn_enemies(
         },
         Enemy { speed: enemy_speed },
         EnemyHealth {
-            current: ENEMY_BASE_HEALTH as f32,
+            current: enemy_health,
         },
         EnemyVelocity {
             current: Vec2::ZERO,
@@ -1120,6 +2023,12 @@ fn move_enemies(
 }
 
 // V2.7: Added game_font for power-up spawning
+fn calculate_enemy_knockback(upgrades: &PurchasedUpgrades) -> f32 {
+    let base_knockback = ENEMY_KNOCKBACK; // 250.0
+    let upgrade_mult = 1.0 + (upgrades.enemy_knockback_level as f32 * 0.5); // +50% per level
+    base_knockback * upgrade_mult
+}
+
 fn handle_trail_collisions(
     mut commands: Commands,
     _game_font: Res<GameFont>,
@@ -1128,6 +2037,7 @@ fn handle_trail_collisions(
     mut combo: ResMut<Combo>,
     mut rng: Local<Option<StdRng>>,
     combat: Res<PlayerCombatStats>,
+    upgrades: Res<PurchasedUpgrades>, // NEW: Add upgrades param
     mut hit_freeze: ResMut<HitFreeze>,
     mut camera_query: Query<&mut ScreenShake, With<MainCamera>>,
     mut enemies: Query<(Entity, &Transform, &Enemy, &mut EnemyHealth, &mut Knockback)>,
@@ -1137,7 +2047,7 @@ fn handle_trail_collisions(
         return;
     }
 
-    let damage = combat.trail_damage();
+    let damage = combat.trail_damage(&upgrades);
     let rng = rng.get_or_insert_with(|| StdRng::from_rng(thread_rng()).unwrap());
     let mut defeated = Vec::new();
     let mut camera_shake = camera_query.single_mut();
@@ -1158,12 +2068,39 @@ fn handle_trail_collisions(
 
         if hit {
             health.current -= damage;
-            
-            // Apply knockback
-            knockback.velocity = hit_direction * ENEMY_KNOCKBACK;
-            
+
+            // Enhanced knockback with upgrade scaling
+            let knockback_strength = calculate_enemy_knockback(&upgrades);
+            knockback.velocity = hit_direction * knockback_strength;
+
+            // Spawn hit particles (small spark effects)
+            for _ in 0..3 { // 3 small particles per hit
+                let particle_angle = rng.gen::<f32>() * std::f32::consts::TAU;
+                let particle_speed = rng.gen_range(50.0..150.0);
+                let particle_velocity = Vec2::from_angle(particle_angle) * particle_speed;
+
+                commands.spawn((
+                    SpriteBundle {
+                        transform: Transform::from_xyz(enemy_pos.x, enemy_pos.y, 0.5),
+                        sprite: Sprite {
+                            color: Color::srgba(2.0, 0.5, 0.0, 1.0), // Orange sparks
+                            custom_size: Some(Vec2::splat(4.0)), // Small particles
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    },
+                    Particle {
+                        velocity: particle_velocity,
+                        lifetime: Timer::from_seconds(0.5, TimerMode::Once),
+                    },
+                ));
+            }
+
             if health.current <= 0.0 {
                 defeated.push((enemy_entity, enemy_pos));
+            } else {
+                // Ricochet feedback - small screen shake
+                camera_shake.trauma = (camera_shake.trauma + 0.1).min(1.0);
             }
         }
     }
@@ -1809,6 +2746,26 @@ fn update_wave_projectiles(
         // V2.6: GROWS as it expands (ocean wave effect, was shrinking!)
         let scale = 1.0 + (1.0 - life_percent) * 0.3;
         transform.scale = Vec3::splat(scale);
+    }
+}
+
+fn update_particles(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut particles: Query<(Entity, &mut Transform, &mut Particle, &mut Sprite)>,
+) {
+    for (entity, mut transform, mut particle, mut sprite) in &mut particles {
+        // Update position
+        transform.translation += particle.velocity.extend(0.0) * time.delta_seconds();
+
+        // Update lifetime
+        if particle.lifetime.tick(time.delta()).just_finished() {
+            commands.entity(entity).despawn();
+        } else {
+            // Fade out over time
+            let alpha = particle.lifetime.remaining_secs() / particle.lifetime.duration().as_secs_f32();
+            sprite.color.set_alpha(alpha);
+        }
     }
 }
 
