@@ -297,11 +297,14 @@ fn update_shop_item_states(
     currency: Res<Currency>,
     upgrades: Res<PurchasedUpgrades>,
     palette: Res<UiPalette>,
-    mut item_cards: Query<(&ShopItemButton, &mut BackgroundColor, &mut BorderColor)>,
-    mut cost_texts: Query<(&ShopItemCost, &mut Text)>,
-    mut button_texts: Query<(&ShopItemPurchaseLabel, &mut Text)>,
-    mut button_states: Query<(&ShopItemPurchaseButton, &mut ButtonState)>,
+    mut queries: ParamSet<(
+        Query<(&ShopItemButton, &mut BackgroundColor, &mut BorderColor)>,
+        Query<(&ShopItemCost, &mut Text)>,
+        Query<(&ShopItemPurchaseLabel, &mut Text)>,
+        Query<(&ShopItemPurchaseButton, &mut ButtonState)>,
+    )>,
 ) {
+    let mut item_cards = queries.p0();
     for (shop_button, mut background, mut border) in &mut item_cards {
         let Some(item) = shop_item(shop_button.item_type) else { continue; };
         let current_level = upgrades.get_current_level(item.upgrade_type);
@@ -322,6 +325,7 @@ fn update_shop_item_states(
         border.0 = border_color;
     }
 
+    let mut cost_texts = queries.p1();
     for (cost_tag, mut text) in &mut cost_texts {
         let Some(item) = shop_item(cost_tag.item_type) else { continue; };
         let current_level = upgrades.get_current_level(item.upgrade_type);
@@ -342,6 +346,7 @@ fn update_shop_item_states(
         }
     }
 
+    let mut button_texts = queries.p2();
     for (label, mut text) in &mut button_texts {
         let Some(item) = shop_item(label.item_type) else { continue; };
         let current_level = upgrades.get_current_level(item.upgrade_type);
@@ -361,6 +366,7 @@ fn update_shop_item_states(
         }
     }
 
+    let mut button_states = queries.p3();
     for (button, mut state) in &mut button_states {
         let Some(item) = shop_item(button.item_type) else { continue; };
         let current_level = upgrades.get_current_level(item.upgrade_type);
