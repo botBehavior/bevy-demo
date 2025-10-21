@@ -216,16 +216,21 @@ fn apply_hud_layout_changes(
     layout: Res<UiLayout>,
     typography: Res<UiTypography>,
     mut hud_root: Query<&mut Style, With<HudRoot>>,
-    mut hud_score: Query<&mut Text, With<HudScore>>,
-    mut hud_combo: Query<&mut Text, With<HudCombo>>,
-    mut hud_buffs: Query<&mut Text, With<HudBuffs>>,
-    mut hud_status: Query<&mut Text, With<HudStatus>>,
     mut hud_health_container: Query<&mut Style, With<HudHealthContainer>>,
     mut hud_health_container_radius: Query<&mut BorderRadius, With<HudHealthContainer>>,
     mut hud_health_bar_radius: Query<&mut BorderRadius, With<HudHealthBar>>,
     mut pause_container: Query<&mut Style, With<PauseButtonContainer>>,
     mut pause_button: Query<&mut Style, With<PauseButton>>,
-    mut pause_text: Query<&mut Text, With<PauseButtonText>>,
+    mut hud_texts: Query<
+        (
+            &mut Text,
+            Option<&HudScore>,
+            Option<&HudCombo>,
+            Option<&HudBuffs>,
+            Option<&HudStatus>,
+            Option<&PauseButtonText>,
+        ),
+    >,
 ) {
     if !layout.is_changed() && !typography.is_changed() {
         return;
@@ -240,17 +245,14 @@ fn apply_hud_layout_changes(
         style.row_gap = Val::Px(layout.vertical_gap());
     }
 
-    if let Ok(mut text) = hud_score.get_single_mut() {
-        text.sections[0].style.font_size = typography.hud_primary();
-    }
-    if let Ok(mut text) = hud_combo.get_single_mut() {
-        text.sections[0].style.font_size = typography.hud_secondary();
-    }
-    if let Ok(mut text) = hud_buffs.get_single_mut() {
-        text.sections[0].style.font_size = typography.hud_secondary();
-    }
-    if let Ok(mut text) = hud_status.get_single_mut() {
-        text.sections[0].style.font_size = typography.hud_caption();
+    for (mut text, is_score, is_combo, is_buffs, is_status, is_pause) in &mut hud_texts {
+        if is_score.is_some() {
+            text.sections[0].style.font_size = typography.hud_primary();
+        } else if is_combo.is_some() || is_buffs.is_some() || is_pause.is_some() {
+            text.sections[0].style.font_size = typography.hud_secondary();
+        } else if is_status.is_some() {
+            text.sections[0].style.font_size = typography.hud_caption();
+        }
     }
 
     let health_height = if layout.is_compact() { 18.0 } else { 22.0 };
@@ -275,9 +277,6 @@ fn apply_hud_layout_changes(
             Val::Px(pause_padding),
         );
         style.min_width = Val::Px(if layout.is_compact() { 120.0 } else { 140.0 });
-    }
-    if let Ok(mut text) = pause_text.get_single_mut() {
-        text.sections[0].style.font_size = typography.hud_secondary();
     }
 }
 
