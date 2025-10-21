@@ -215,12 +215,22 @@ fn refresh_ui_resources_on_resize(
 fn apply_hud_layout_changes(
     layout: Res<UiLayout>,
     typography: Res<UiTypography>,
-    mut hud_root: Query<&mut Style, With<HudRoot>>,
-    mut hud_health_container: Query<&mut Style, With<HudHealthContainer>>,
-    mut hud_health_container_radius: Query<&mut BorderRadius, With<HudHealthContainer>>,
-    mut hud_health_bar_radius: Query<&mut BorderRadius, With<HudHealthBar>>,
-    mut pause_container: Query<&mut Style, With<PauseButtonContainer>>,
-    mut pause_button: Query<&mut Style, With<PauseButton>>,
+    mut hud_styles: Query<
+        (
+            &mut Style,
+            Option<&HudRoot>,
+            Option<&HudHealthContainer>,
+            Option<&PauseButtonContainer>,
+            Option<&PauseButton>,
+        ),
+    >,
+    mut hud_border_radii: Query<
+        (
+            &mut BorderRadius,
+            Option<&HudHealthContainer>,
+            Option<&HudHealthBar>,
+        ),
+    >,
     mut hud_texts: Query<
         (
             &mut Text,
@@ -237,13 +247,8 @@ fn apply_hud_layout_changes(
     }
 
     let hud_padding = layout.safe_margin() * if layout.is_compact() { 0.6 } else { 0.75 };
-    if let Ok(mut style) = hud_root.get_single_mut() {
-        style.top = Val::Px(layout.safe_margin());
-        style.right = Val::Px(layout.safe_margin());
-        style.max_width = Val::Percent(layout.hud_max_width_percent());
-        style.padding = UiRect::all(Val::Px(hud_padding));
-        style.row_gap = Val::Px(layout.vertical_gap());
-    }
+    let hud_safe_margin = layout.safe_margin();
+    let hud_max_width = layout.hud_max_width_percent();
 
     for (mut text, is_score, is_combo, is_buffs, is_status, is_pause) in &mut hud_texts {
         if is_score.is_some() {
@@ -256,27 +261,42 @@ fn apply_hud_layout_changes(
     }
 
     let health_height = if layout.is_compact() { 18.0 } else { 22.0 };
-    if let Ok(mut style) = hud_health_container.get_single_mut() {
-        style.height = Val::Px(health_height);
-    }
-    if let Ok(mut radius) = hud_health_container_radius.get_single_mut() {
-        *radius = BorderRadius::all(Val::Px(health_height * 0.4));
-    }
-    if let Ok(mut radius) = hud_health_bar_radius.get_single_mut() {
-        *radius = BorderRadius::all(Val::Px(health_height * 0.4));
-    }
 
     let pause_padding = layout.safe_margin() * if layout.is_compact() { 0.35 } else { 0.45 };
-    if let Ok(mut style) = pause_container.get_single_mut() {
-        style.top = Val::Px(layout.safe_margin());
-        style.left = Val::Px(layout.safe_margin());
+
+    for (mut style, is_root, is_health_container, is_pause_container, is_pause_button) in
+        &mut hud_styles
+    {
+        if is_root.is_some() {
+            style.top = Val::Px(hud_safe_margin);
+            style.right = Val::Px(hud_safe_margin);
+            style.max_width = Val::Percent(hud_max_width);
+            style.padding = UiRect::all(Val::Px(hud_padding));
+            style.row_gap = Val::Px(layout.vertical_gap());
+        }
+
+        if is_health_container.is_some() {
+            style.height = Val::Px(health_height);
+        }
+
+        if is_pause_container.is_some() {
+            style.top = Val::Px(hud_safe_margin);
+            style.left = Val::Px(hud_safe_margin);
+        }
+
+        if is_pause_button.is_some() {
+            style.padding = UiRect::axes(
+                Val::Px(pause_padding * 1.2),
+                Val::Px(pause_padding),
+            );
+            style.min_width = Val::Px(if layout.is_compact() { 120.0 } else { 140.0 });
+        }
     }
-    if let Ok(mut style) = pause_button.get_single_mut() {
-        style.padding = UiRect::axes(
-            Val::Px(pause_padding * 1.2),
-            Val::Px(pause_padding),
-        );
-        style.min_width = Val::Px(if layout.is_compact() { 120.0 } else { 140.0 });
+
+    for (mut radius, is_health_container, is_health_bar) in &mut hud_border_radii {
+        if is_health_container.is_some() || is_health_bar.is_some() {
+            *radius = BorderRadius::all(Val::Px(health_height * 0.4));
+        }
     }
 }
 
