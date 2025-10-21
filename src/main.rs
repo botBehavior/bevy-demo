@@ -10,7 +10,7 @@ use bevy::log::LogPlugin;
 use bevy::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
 use bevy::window::WindowResolution;
-use bevy::window::{CursorGrabMode, PrimaryWindow, Window};
+use bevy::window::{CursorGrabMode, PrimaryWindow, Window, WindowResized};
 use rand::prelude::*;
 use std::time::Duration;
 use serde::{Deserialize, Serialize};
@@ -178,14 +178,232 @@ fn configure_ui_resources(
     let palette = UiPalette::new(detect_theme());
     commands.insert_resource(palette);
 
-    let fallback_window = Window::default();
-    let window_ref = windows.get_single().ok();
-    let window = window_ref.unwrap_or(&fallback_window);
+    let window = windows
+        .get_single()
+        .expect("primary window should be available during startup");
 
     commands.insert_resource(UiTypography::from_window(window));
     commands.insert_resource(UiLayout::from_window(window));
     commands.insert_resource(FocusState::default());
     commands.insert_resource(ShopFeedback::default());
+}
+
+fn refresh_ui_resources_on_resize(
+    mut layout: ResMut<UiLayout>,
+    mut typography: ResMut<UiTypography>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    mut resize_events: EventReader<WindowResized>,
+) {
+    let mut resized = false;
+    for _ in resize_events.read() {
+        resized = true;
+    }
+
+    if !resized {
+        return;
+    }
+
+    let Ok(window) = windows.get_single() else {
+        return;
+    };
+
+    *layout = UiLayout::from_window(window);
+    *typography = UiTypography::from_window(window);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_hud_layout_changes(
+    layout: Res<UiLayout>,
+    typography: Res<UiTypography>,
+    mut hud_root: Query<&mut Style, With<HudRoot>>,
+    mut hud_score: Query<&mut Text, With<HudScore>>,
+    mut hud_combo: Query<&mut Text, With<HudCombo>>,
+    mut hud_buffs: Query<&mut Text, With<HudBuffs>>,
+    mut hud_status: Query<&mut Text, With<HudStatus>>,
+    mut hud_health_container: Query<&mut Style, With<HudHealthContainer>>,
+    mut hud_health_container_radius: Query<&mut BorderRadius, With<HudHealthContainer>>,
+    mut hud_health_bar_radius: Query<&mut BorderRadius, With<HudHealthBar>>,
+    mut pause_container: Query<&mut Style, With<PauseButtonContainer>>,
+    mut pause_button: Query<&mut Style, With<PauseButton>>,
+    mut pause_text: Query<&mut Text, With<PauseButtonText>>,
+) {
+    if !layout.is_changed() && !typography.is_changed() {
+        return;
+    }
+
+    let hud_padding = layout.safe_margin() * if layout.is_compact() { 0.6 } else { 0.75 };
+    if let Ok(mut style) = hud_root.get_single_mut() {
+        style.top = Val::Px(layout.safe_margin());
+        style.right = Val::Px(layout.safe_margin());
+        style.max_width = Val::Percent(layout.hud_max_width_percent());
+        style.padding = UiRect::all(Val::Px(hud_padding));
+        style.row_gap = Val::Px(layout.vertical_gap());
+    }
+
+    if let Ok(mut text) = hud_score.get_single_mut() {
+        text.sections[0].style.font_size = typography.hud_primary();
+    }
+    if let Ok(mut text) = hud_combo.get_single_mut() {
+        text.sections[0].style.font_size = typography.hud_secondary();
+    }
+    if let Ok(mut text) = hud_buffs.get_single_mut() {
+        text.sections[0].style.font_size = typography.hud_secondary();
+    }
+    if let Ok(mut text) = hud_status.get_single_mut() {
+        text.sections[0].style.font_size = typography.hud_caption();
+    }
+
+    let health_height = if layout.is_compact() { 18.0 } else { 22.0 };
+    if let Ok(mut style) = hud_health_container.get_single_mut() {
+        style.height = Val::Px(health_height);
+    }
+    if let Ok(mut radius) = hud_health_container_radius.get_single_mut() {
+        *radius = BorderRadius::all(Val::Px(health_height * 0.4));
+    }
+    if let Ok(mut radius) = hud_health_bar_radius.get_single_mut() {
+        *radius = BorderRadius::all(Val::Px(health_height * 0.4));
+    }
+
+    let pause_padding = layout.safe_margin() * if layout.is_compact() { 0.35 } else { 0.45 };
+    if let Ok(mut style) = pause_container.get_single_mut() {
+        style.top = Val::Px(layout.safe_margin());
+        style.left = Val::Px(layout.safe_margin());
+    }
+    if let Ok(mut style) = pause_button.get_single_mut() {
+        style.padding = UiRect::axes(
+            Val::Px(pause_padding * 1.2),
+            Val::Px(pause_padding),
+        );
+        style.min_width = Val::Px(if layout.is_compact() { 120.0 } else { 140.0 });
+    }
+    if let Ok(mut text) = pause_text.get_single_mut() {
+        text.sections[0].style.font_size = typography.hud_secondary();
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_shop_layout_changes(
+    layout: Res<UiLayout>,
+    typography: Res<UiTypography>,
+    mut shop_button_container: Query<&mut Style, With<ShopButtonContainer>>,
+    mut shop_button: Query<&mut Style, With<ShopButton>>,
+    mut shop_modal_overlay: Query<&mut Style, With<ShopModalBackground>>,
+    mut shop_modal_content: Query<&mut Style, With<ShopModalContent>>,
+    mut close_button: Query<&mut Style, With<CloseShopButton>>,
+    mut shop_items_grid: Query<&mut Style, With<ShopItemsGrid>>,
+    mut shop_item_cards: Query<&mut Style, With<ShopItemButton>>,
+    mut shop_item_purchase_buttons: Query<&mut Style, With<ShopItemPurchaseButton>>,
+    mut shop_feedback_container: Query<&mut Style, With<ShopFeedbackContainer>>,
+) {
+    let layout_changed = layout.is_changed();
+    let typography_changed = typography.is_changed();
+    if !layout_changed && !typography_changed {
+        return;
+    }
+
+    if let Ok(mut style) = shop_button_container.get_single_mut() {
+        style.bottom = Val::Px(layout.safe_margin());
+    }
+    if let Ok(mut style) = shop_button.get_single_mut() {
+        style.padding = UiRect::axes(
+            Val::Px(layout.safe_margin() * if layout.is_compact() { 0.9 } else { 1.1 }),
+            Val::Px(layout.safe_margin() * 0.7),
+        );
+        style.min_width = if layout.is_compact() {
+            Val::Percent(65.0)
+        } else {
+            Val::Px(220.0)
+        };
+    }
+
+    if let Ok(mut style) = shop_modal_overlay.get_single_mut() {
+        style.padding = UiRect::all(Val::Px(layout.safe_margin()));
+    }
+    if let Ok(mut style) = shop_modal_content.get_single_mut() {
+        style.width = layout.shop_container_width();
+        style.row_gap = Val::Px(layout.vertical_gap() * 1.4);
+        style.padding = UiRect::all(Val::Px(layout.safe_margin()));
+    }
+    if let Ok(mut style) = close_button.get_single_mut() {
+        let close_size = typography.shop_heading() * 1.5;
+        style.min_width = Val::Px(close_size);
+        style.min_height = Val::Px(close_size);
+    }
+
+    let card_gap = layout.shop_card_gap();
+    if let Ok(mut style) = shop_items_grid.get_single_mut() {
+        style.row_gap = Val::Px(card_gap);
+        style.column_gap = Val::Px(card_gap);
+    }
+
+    for mut style in &mut shop_item_cards {
+        style.row_gap = Val::Px(card_gap * 0.5);
+        style.padding = UiRect::all(Val::Px(card_gap * 0.6));
+        style.margin = UiRect::all(Val::Px(card_gap * 0.5));
+        style.flex_basis = layout.shop_card_basis();
+        style.min_height = Val::Px(if layout.is_compact() { 180.0 } else { 200.0 });
+    }
+
+    for mut style in &mut shop_item_purchase_buttons {
+        style.padding = UiRect::axes(
+            Val::Px(card_gap * 0.4),
+            Val::Px(card_gap * 0.3),
+        );
+        style.min_width = Val::Px(if layout.is_compact() { 100.0 } else { 120.0 });
+    }
+
+    if let Ok(mut style) = shop_feedback_container.get_single_mut() {
+        style.padding = UiRect::axes(
+            Val::Px(layout.horizontal_gap() * 2.0),
+            Val::Px(layout.vertical_gap() * 1.4),
+        );
+    }
+}
+
+fn apply_shop_typography_changes(
+    typography: Res<UiTypography>,
+    mut shop_button_text: Query<&mut Text, With<ShopButtonText>>,
+    mut shop_modal_title: Query<&mut Text, With<ShopModalTitle>>,
+    mut close_button_text: Query<&mut Text, With<CloseShopButtonText>>,
+    mut shop_item_icons: Query<&mut Text, With<ShopItemIcon>>,
+    mut shop_item_names: Query<&mut Text, With<ShopItemName>>,
+    mut shop_item_descriptions: Query<&mut Text, With<ShopItemDescription>>,
+    mut shop_item_costs: Query<&mut Text, With<ShopItemCost>>,
+    mut shop_item_purchase_labels: Query<&mut Text, With<ShopItemPurchaseLabel>>,
+    mut shop_feedback_text: Query<&mut Text, With<ShopFeedbackText>>,
+) {
+    if !typography.is_changed() {
+        return;
+    }
+
+    if let Ok(mut text) = shop_button_text.get_single_mut() {
+        text.sections[0].style.font_size = typography.shop_heading();
+    }
+    if let Ok(mut text) = shop_modal_title.get_single_mut() {
+        text.sections[0].style.font_size = typography.shop_title();
+    }
+    if let Ok(mut text) = close_button_text.get_single_mut() {
+        text.sections[0].style.font_size = typography.shop_heading();
+    }
+
+    for mut text in &mut shop_item_icons {
+        text.sections[0].style.font_size = typography.shop_heading() * 1.1;
+    }
+    for mut text in &mut shop_item_names {
+        text.sections[0].style.font_size = typography.shop_heading();
+    }
+    for mut text in &mut shop_item_descriptions {
+        text.sections[0].style.font_size = typography.shop_body();
+    }
+    for mut text in &mut shop_item_costs {
+        text.sections[0].style.font_size = typography.shop_label();
+    }
+    for mut text in &mut shop_item_purchase_labels {
+        text.sections[0].style.font_size = typography.shop_label();
+    }
+    if let Ok(mut text) = shop_feedback_text.get_single_mut() {
+        text.sections[0].style.font_size = typography.shop_body();
+    }
 }
 
 fn update_shop_ui_visibility(
@@ -220,7 +438,13 @@ fn update_shop_ui_visibility(
 fn handle_ui_interactions(
     mut focus_state: ResMut<FocusState>,
     shop_state: Res<ShopState>,
+    mut run_state: ResMut<RunState>,
+    mut cursor_state: ResMut<CursorLockState>,
     mut actions: EventWriter<ShopActionEvent>,
+    mut pause_buttons: Query<
+        (Entity, &Interaction, &Focusable),
+        (With<PauseButton>, Changed<Interaction>),
+    >,
     mut open_buttons: Query<
         (Entity, &Interaction, &Focusable),
         (With<ShopButton>, Changed<Interaction>),
@@ -233,8 +457,23 @@ fn handle_ui_interactions(
         (Entity, &Interaction, &ShopItemPurchaseButton, &Focusable, Option<&ButtonState>),
         Changed<Interaction>,
     >,
+    mut windows: Query<&mut Window, With<PrimaryWindow>>,
 ) {
     let current_group = focus_state.active_group;
+
+    for (entity, interaction, focusable) in &mut pause_buttons {
+        if focusable.group == current_group && *interaction == Interaction::Hovered {
+            focus_state.request_focus(entity);
+        }
+
+        if *interaction == Interaction::Pressed {
+            if shop_state.is_open {
+                actions.send(ShopActionEvent::CloseShop);
+            } else if run_state.active {
+                toggle_pause_state(&mut run_state, &mut cursor_state, &mut windows);
+            }
+        }
+    }
 
     for (entity, interaction, focusable) in &mut open_buttons {
         if *interaction == Interaction::Hovered && focusable.group == current_group {
@@ -798,6 +1037,10 @@ fn main() {
             ),
         )
         // UI and management systems
+        .add_systems(Update, refresh_ui_resources_on_resize)
+        .add_systems(Update, apply_hud_layout_changes)
+        .add_systems(Update, apply_shop_layout_changes)
+        .add_systems(Update, apply_shop_typography_changes)
         .add_systems(
             Update,
             (
@@ -1442,7 +1685,13 @@ struct TrailSpawnTimer(Timer);
 struct HudScore;
 
 #[derive(Component)]
+struct HudRoot;
+
+#[derive(Component)]
 struct HudHealth;
+
+#[derive(Component)]
+struct HudHealthContainer;
 
 #[derive(Component)]
 struct HudCombo;
@@ -1454,7 +1703,19 @@ struct HudBuffs;
 struct HudStatus;
 
 #[derive(Component)]
+struct PauseButtonContainer;
+
+#[derive(Component)]
+struct PauseButton;
+
+#[derive(Component)]
+struct PauseButtonText;
+
+#[derive(Component)]
 struct ShopButton;
+
+#[derive(Component)]
+struct ShopButtonContainer;
 
 #[derive(Component)]
 struct ShopButtonText;
@@ -1469,7 +1730,13 @@ struct ShopModalBackground;
 struct ShopModalContent;
 
 #[derive(Component)]
+struct ShopModalTitle;
+
+#[derive(Component)]
 struct CloseShopButton;
+
+#[derive(Component)]
+struct CloseShopButtonText;
 
 #[derive(Component)]
 struct ShopItemButton {
@@ -1508,6 +1775,9 @@ struct ShopFeedbackContainer;
 
 #[derive(Component)]
 struct ShopFeedbackText;
+
+#[derive(Component)]
+struct ShopItemsGrid;
 
 #[derive(Component)]
 struct ButtonState {
@@ -1734,22 +2004,25 @@ fn setup(
     // HUD Container - theme-aware and responsive to viewport
     let hud_padding = layout.safe_margin() * if layout.is_compact() { 0.6 } else { 0.75 };
     commands
-        .spawn(NodeBundle {
-            style: Style {
-                position_type: PositionType::Absolute,
-                top: Val::Px(layout.safe_margin()),
-                right: Val::Px(layout.safe_margin()),
-                max_width: Val::Percent(layout.hud_max_width_percent()),
-                padding: UiRect::all(Val::Px(hud_padding)),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(layout.vertical_gap()),
-                border: UiRect::all(Val::Px(1.0)),
+        .spawn((
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    top: Val::Px(layout.safe_margin()),
+                    right: Val::Px(layout.safe_margin()),
+                    max_width: Val::Percent(layout.hud_max_width_percent()),
+                    padding: UiRect::all(Val::Px(hud_padding)),
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(layout.vertical_gap()),
+                    border: UiRect::all(Val::Px(1.0)),
+                    ..Default::default()
+                },
+                background_color: palette.surface_elevated().into(),
+                border_color: palette.button_outline().with_alpha(0.2).into(),
                 ..Default::default()
             },
-            background_color: palette.surface_elevated().into(),
-            border_color: palette.button_outline().with_alpha(0.2).into(),
-            ..Default::default()
-        })
+            HudRoot,
+        ))
         .with_children(|parent| {
             parent.spawn((
                 TextBundle {
@@ -1772,16 +2045,19 @@ fn setup(
 
             let health_height = if layout.is_compact() { 18.0 } else { 22.0 };
             parent
-                .spawn(NodeBundle {
-                    style: Style {
-                        width: Val::Percent(100.0),
-                        height: Val::Px(health_height),
+                .spawn((
+                    NodeBundle {
+                        style: Style {
+                            width: Val::Percent(100.0),
+                            height: Val::Px(health_height),
+                            ..Default::default()
+                        },
+                        background_color: palette.surface_highlight().into(),
+                        border_radius: BorderRadius::all(Val::Px(health_height * 0.4)),
                         ..Default::default()
                     },
-                    background_color: palette.surface_highlight().into(),
-                    border_radius: BorderRadius::all(Val::Px(health_height * 0.4)),
-                    ..Default::default()
-                })
+                    HudHealthContainer,
+                ))
                 .with_children(|health_bar| {
                     health_bar.spawn((
                         NodeBundle {
@@ -1833,6 +2109,63 @@ fn setup(
                 ),
                 HudStatus,
             ));
+        });
+
+    // Mobile-friendly pause button anchored to the safe area
+    let pause_padding = layout.safe_margin() * if layout.is_compact() { 0.35 } else { 0.45 };
+    commands
+        .spawn((
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    top: Val::Px(layout.safe_margin()),
+                    left: Val::Px(layout.safe_margin()),
+                    ..Default::default()
+                },
+                background_color: Color::NONE.into(),
+                ..Default::default()
+            },
+            PauseButtonContainer,
+        ))
+        .with_children(|parent| {
+            parent
+                .spawn((
+                    ButtonBundle {
+                        style: Style {
+                            padding: UiRect::axes(
+                                Val::Px(pause_padding * 1.2),
+                                Val::Px(pause_padding),
+                            ),
+                            border: UiRect::all(Val::Px(2.0)),
+                            min_width: Val::Px(if layout.is_compact() { 120.0 } else { 140.0 }),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            ..Default::default()
+                        },
+                        background_color: palette.button_idle().into(),
+                        border_color: palette.button_outline().with_alpha(0.35).into(),
+                        ..Default::default()
+                    },
+                    PauseButton,
+                    Focusable::global(0),
+                    ButtonState { enabled: true },
+                    ButtonVisual {
+                        kind: ButtonVisualKind::Primary,
+                    },
+                ))
+                .with_children(|button| {
+                    button.spawn((
+                        TextBundle::from_section(
+                            "Pause",
+                            TextStyle {
+                                font: font.clone(),
+                                font_size: typography.hud_secondary(),
+                                color: palette.text_primary(),
+                            },
+                        ),
+                        PauseButtonText,
+                    ));
+                });
         });
 
     // Initialize hit freeze
@@ -1951,33 +2284,42 @@ fn create_shop_card(
                     ..Default::default()
                 })
                 .with_children(|header| {
-                    header.spawn(TextBundle::from_section(
-                        shop_item.icon_emoji,
-                        TextStyle {
-                            font: font.0.clone(),
-                            font_size: typography.shop_heading() * 1.1,
-                            color: palette.accent(),
-                        },
+                    header.spawn((
+                        TextBundle::from_section(
+                            shop_item.icon_emoji,
+                            TextStyle {
+                                font: font.0.clone(),
+                                font_size: typography.shop_heading() * 1.1,
+                                color: palette.accent(),
+                            },
+                        ),
+                        ShopItemIcon,
                     ));
 
-                    header.spawn(TextBundle::from_section(
-                        shop_item.name,
-                        TextStyle {
-                            font: font.0.clone(),
-                            font_size: typography.shop_heading(),
-                            color: palette.text_primary(),
-                        },
+                    header.spawn((
+                        TextBundle::from_section(
+                            shop_item.name,
+                            TextStyle {
+                                font: font.0.clone(),
+                                font_size: typography.shop_heading(),
+                                color: palette.text_primary(),
+                            },
+                        ),
+                        ShopItemName,
                     ));
                 });
 
-            card.spawn(TextBundle {
-                text: description,
-                style: Style {
-                    max_width: Val::Percent(100.0),
+            card.spawn((
+                TextBundle {
+                    text: description,
+                    style: Style {
+                        max_width: Val::Percent(100.0),
+                        ..Default::default()
+                    },
                     ..Default::default()
                 },
-                ..Default::default()
-            });
+                ShopItemDescription,
+            ));
 
             card
                 .spawn(NodeBundle {
@@ -2060,17 +2402,20 @@ fn setup_shop_ui(
 ) {
     // Responsive shop button pinned to the safe area
     commands
-        .spawn(NodeBundle {
-            style: Style {
-                position_type: PositionType::Absolute,
-                bottom: Val::Px(layout.safe_margin()),
-                width: Val::Percent(100.0),
-                justify_content: JustifyContent::Center,
+        .spawn((
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    bottom: Val::Px(layout.safe_margin()),
+                    width: Val::Percent(100.0),
+                    justify_content: JustifyContent::Center,
+                    ..Default::default()
+                },
+                background_color: Color::NONE.into(),
                 ..Default::default()
             },
-            background_color: Color::NONE.into(),
-            ..Default::default()
-        })
+            ShopButtonContainer,
+        ))
         .with_children(|parent| {
             parent
                 .spawn((
@@ -2095,7 +2440,7 @@ fn setup_shop_ui(
                         ..Default::default()
                     },
                     ShopButton,
-                    Focusable::global(0),
+                    Focusable::global(1),
                     ButtonState { enabled: true },
                     ButtonVisual {
                         kind: ButtonVisualKind::Primary,
@@ -2168,13 +2513,16 @@ fn setup_shop_ui(
                             ..Default::default()
                         })
                         .with_children(|header| {
-                            header.spawn(TextBundle::from_section(
-                                "🛒 UPGRADE SHOP",
-                                TextStyle {
-                                    font: font.0.clone(),
-                                    font_size: typography.shop_title(),
-                                    color: palette.text_primary(),
-                                },
+                            header.spawn((
+                                TextBundle::from_section(
+                                    "🛒 UPGRADE SHOP",
+                                    TextStyle {
+                                        font: font.0.clone(),
+                                        font_size: typography.shop_title(),
+                                        color: palette.text_primary(),
+                                    },
+                                ),
+                                ShopModalTitle,
                             ));
 
                             header
@@ -2200,13 +2548,16 @@ fn setup_shop_ui(
                                     },
                                 ))
                                 .with_children(|button| {
-                                    button.spawn(TextBundle::from_section(
-                                        "×",
-                                        TextStyle {
-                                            font: font.0.clone(),
-                                            font_size: typography.shop_heading(),
-                                            color: palette.text_primary(),
-                                        },
+                                    button.spawn((
+                                        TextBundle::from_section(
+                                            "×",
+                                            TextStyle {
+                                                font: font.0.clone(),
+                                                font_size: typography.shop_heading(),
+                                                color: palette.text_primary(),
+                                            },
+                                        ),
+                                        CloseShopButtonText,
                                     ));
                                 });
                         });
@@ -2245,17 +2596,20 @@ fn setup_shop_ui(
                         });
 
                     content
-                        .spawn(NodeBundle {
-                            style: Style {
-                                display: Display::Flex,
-                                flex_wrap: FlexWrap::Wrap,
-                                row_gap: Val::Px(layout.shop_card_gap()),
-                                column_gap: Val::Px(layout.shop_card_gap()),
-                                justify_content: JustifyContent::FlexStart,
+                        .spawn((
+                            NodeBundle {
+                                style: Style {
+                                    display: Display::Flex,
+                                    flex_wrap: FlexWrap::Wrap,
+                                    row_gap: Val::Px(layout.shop_card_gap()),
+                                    column_gap: Val::Px(layout.shop_card_gap()),
+                                    justify_content: JustifyContent::FlexStart,
+                                    ..Default::default()
+                                },
                                 ..Default::default()
                             },
-                            ..Default::default()
-                        })
+                            ShopItemsGrid,
+                        ))
                         .with_children(|grid| {
                             let mut order = 1usize;
                             for shop_item in SHOP_ITEMS.iter() {
@@ -2835,6 +3189,7 @@ fn update_ui(
             Without<HudBuffs>,
         ),
     >,
+    mut pause_text: Query<&mut Text, With<PauseButtonText>>,
 ) {
     // Update score
     if let Ok(mut text) = score_text.get_single_mut() {
@@ -2883,6 +3238,11 @@ fn update_ui(
             "Status: Running"
         };
         text.sections[0].value = status.to_string();
+    }
+
+    if let Ok(mut text) = pause_text.get_single_mut() {
+        let label = if run_state.paused { "Resume" } else { "Pause" };
+        text.sections[0].value = label.to_string();
     }
 }
 
@@ -2971,15 +3331,22 @@ fn handle_pause_toggle(
     }
 
     if keys.just_pressed(KeyCode::Escape) {
-        run_state.paused = !run_state.paused;
-        
-        // Force cursor unlock when pausing
-        if run_state.paused {
-            if let Ok(mut window) = windows.get_single_mut() {
-                window.cursor.visible = true;
-                window.cursor.grab_mode = CursorGrabMode::None;
-                cursor_state.locked = false;
-            }
+        toggle_pause_state(&mut run_state, &mut cursor_state, &mut windows);
+    }
+}
+
+fn toggle_pause_state(
+    run_state: &mut RunState,
+    cursor_state: &mut CursorLockState,
+    windows: &mut Query<&mut Window, With<PrimaryWindow>>,
+) {
+    run_state.paused = !run_state.paused;
+
+    if run_state.paused {
+        if let Ok(mut window) = windows.get_single_mut() {
+            window.cursor.visible = true;
+            window.cursor.grab_mode = CursorGrabMode::None;
+            cursor_state.locked = false;
         }
     }
 }
