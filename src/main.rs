@@ -34,10 +34,11 @@ const DAMAGE_POWER_BONUS: f32 = 0.5;
 const SHIELD_DURATION: f32 = 4.0; // Was 10 - tactical not invincible
 const POWER_UP_LIFETIME: f32 = 12.0;
 const POWER_UP_DROP_CHANCE: f32 = 0.15; // Was 0.35 - rare = special
-const POWER_UP_HEART_WEIGHT: f32 = 0.35; // Rebalanced for 4 types
-const POWER_UP_SHIELD_WEIGHT: f32 = 0.25;
-const POWER_UP_DAMAGE_WEIGHT: f32 = 0.25;
+const POWER_UP_HEART_WEIGHT: f32 = 0.30; // Rebalanced for 5 types
+const POWER_UP_SHIELD_WEIGHT: f32 = 0.20;
+const POWER_UP_DAMAGE_WEIGHT: f32 = 0.20;
 const POWER_UP_ACCURACY_WEIGHT: f32 = 0.15; // V2.5: New accuracy power-up
+const POWER_UP_WAVEBLAST_WEIGHT: f32 = 0.15; // NEW: Wave blast power-up
 
 // Game Feel Constants
 const SCREEN_SHAKE_DECAY: f32 = 3.0;
@@ -130,7 +131,10 @@ fn main() {
                 handle_power_up_pickups,
                 tick_power_up_lifetimes,
                 tick_combo,
+                tick_wave_blast_timer, // NEW: Update wave blast timer
                 update_ui,
+                update_game_over_ui, // NEW: Show/hide game over overlay
+                handle_touch_respawn, // NEW: Touch respawn support
                 handle_restart,
                 handle_pause_toggle,
                 enforce_cursor_lock,
@@ -142,7 +146,7 @@ fn main() {
             (
                 camera_follow_player,
                 update_background_tiles, // V2.5: Infinite background
-                toggle_weapon,
+                update_weapon_type, // NEW: Auto-switch based on wave blast
                 spawn_wave_projectiles,
                 update_wave_projectiles,
                 handle_wave_collisions,
@@ -295,6 +299,11 @@ struct CursorLockState {
     locked: bool,
 }
 
+#[derive(Resource, Default)]
+struct RestartTrigger {
+    requested: bool,
+}
+
 #[derive(Resource)]
 struct PlayerHealth {
     current: u32,
@@ -360,6 +369,7 @@ struct PlayerCombatStats {
     base_trail_damage: f32,
     bonus_multiplier: f32,
     accuracy_stacks: u32, // V2.5: Accuracy power-up tracking
+    wave_blast_timer: Option<Timer>, // NEW: Wave blast power-up timer
 }
 
 impl Default for PlayerCombatStats {
@@ -368,6 +378,7 @@ impl Default for PlayerCombatStats {
             base_trail_damage: TRAIL_BASE_DAMAGE as f32,
             bonus_multiplier: 0.0,
             accuracy_stacks: 0, // V2.5: Start with no accuracy
+            wave_blast_timer: None, // NEW: Start without wave blast
         }
     }
 }
@@ -381,8 +392,24 @@ impl PlayerCombatStats {
         self.bonus_multiplier += DAMAGE_POWER_BONUS;
     }
 
+    fn activate_wave_blast(&mut self) {
+        let mut timer = Timer::from_seconds(10.0, TimerMode::Once);
+        timer.unpause();
+        self.wave_blast_timer = Some(timer);
+    }
+
+    fn has_wave_blast(&self) -> bool {
+        matches!(self.wave_blast_timer.as_ref(), Some(timer) if !timer.finished())
+    }
+
+    fn wave_blast_remaining(&self) -> Option<f32> {
+        self.wave_blast_timer.as_ref().map(|timer| timer.remaining_secs())
+    }
+
     fn reset(&mut self) {
         self.bonus_multiplier = 0.0;
+        self.accuracy_stacks = 0;
+        self.wave_blast_timer = None;
     }
 }
 
@@ -462,6 +489,15 @@ struct HudBuffs;
 struct HudStatus;
 
 #[derive(Component)]
+struct HudHealthBar;
+
+#[derive(Component)]
+struct RespawnButton;
+
+#[derive(Component)]
+struct GameOverOverlay;
+
+#[derive(Component)]
 struct PowerUp {
     kind: PowerUpKind,
 }
@@ -528,6 +564,7 @@ enum PowerUpKind {
     Shield,
     Damage,
     Accuracy, // V2.5: New power-up
+    WaveBlast, // NEW: Wave weapon power-up
 }
 
 impl Default for TrailSpawnTimer {
@@ -605,15 +642,15 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         Knockback::default(),
     ));
 
-    // HUD Container
+    // HUD Container - Moved to top-right for mobile visibility
     commands
         .spawn(NodeBundle {
             style: Style {
                 position_type: PositionType::Absolute,
-                top: Val::Px(16.0),
-                left: Val::Px(16.0),
+                top: Val::Px(20.0),
+                right: Val::Px(20.0),
                 flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(4.0),
+                row_gap: Val::Px(8.0),
                 ..Default::default()
             },
             ..Default::default()
@@ -631,17 +668,29 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 HudScore,
             ));
 
-            parent.spawn((
-                TextBundle::from_section(
-                    format!("Health: {}/{}", PLAYER_MAX_HEALTH, PLAYER_MAX_HEALTH),
-                    TextStyle {
-                        font: font.clone(),
-                        font_size: 20.0,
-                        color: Color::srgb(1.0, 0.6, 0.7),
+            // Visual Health Bar
+            parent.spawn(NodeBundle {
+                style: Style {
+                    width: Val::Px(200.0),
+                    height: Val::Px(24.0),
+                    ..default()
+                },
+                background_color: Color::srgba(0.3, 0.3, 0.3, 0.8).into(),
+                ..default()
+            }).with_children(|health_bar| {
+                health_bar.spawn((
+                    NodeBundle {
+                        style: Style {
+                            width: Val::Percent(100.0), // Will be updated dynamically
+                            height: Val::Percent(100.0),
+                            ..default()
+                        },
+                        background_color: Color::srgba(1.0, 0.3, 0.3, 1.0).into(),
+                        ..default()
                     },
-                ),
-                HudHealth,
-            ));
+                    HudHealthBar,
+                ));
+            });
 
             parent.spawn((
                 TextBundle::from_section(
@@ -679,9 +728,67 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 HudStatus,
             ));
         });
-    
+
+    // Game Over Overlay (shown when game is over)
+    commands.spawn((
+        NodeBundle {
+            style: Style {
+                position_type: PositionType::Absolute,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            background_color: Color::srgba(0.0, 0.0, 0.0, 0.7).into(),
+            ..default()
+        },
+        GameOverOverlay,
+    )).with_children(|parent| {
+        parent.spawn(TextBundle {
+            text: Text::from_section(
+                "GAME OVER\nTap RESPAWN button to continue",
+                TextStyle {
+                    font: font.clone(),
+                    font_size: 32.0,
+                    color: Color::WHITE,
+                },
+            ),
+            ..default()
+        });
+    });
+
+    // Respawn button (mobile-friendly, only visible when game over)
+    commands.spawn((
+        NodeBundle {
+            style: Style {
+                position_type: PositionType::Absolute,
+                bottom: Val::Px(50.0),
+                left: Val::Px(50.0),
+                width: Val::Px(120.0),
+                height: Val::Px(60.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            background_color: Color::srgba(0.2, 0.8, 1.0, 0.8).into(),
+            ..default()
+        },
+        RespawnButton,
+    )).with_children(|parent| {
+        parent.spawn(TextBundle::from_section(
+            "RESPAWN",
+            TextStyle {
+                font: font,
+                font_size: 16.0,
+                color: Color::WHITE,
+            },
+        ));
+    });
+
     // Initialize hit freeze
     commands.insert_resource(HitFreeze::default());
+    commands.insert_resource(RestartTrigger::default());
 }
 
 // Spawn death explosion particles (sprite-based)
@@ -746,6 +853,7 @@ fn update_pointer_target(
     run_state: Res<RunState>,
     mut target: ResMut<PointerTarget>,
     mut motion_events: EventReader<MouseMotion>,
+    mut touch_events: EventReader<TouchInput>, // NEW: Touch input support
     windows: Query<&Window, With<PrimaryWindow>>,
     camera_query: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
 ) {
@@ -754,12 +862,29 @@ fn update_pointer_target(
     };
 
     if let Ok((camera, transform)) = camera_query.get_single() {
-        if let Some(cursor_position) = window.cursor_position() {
+        // Handle touch input (mobile)
+        let mut touch_position = None;
+        for touch in touch_events.read() {
+            if touch.phase == bevy::input::touch::TouchPhase::Moved
+                || touch.phase == bevy::input::touch::TouchPhase::Started {
+                if let Some(ray) = camera.viewport_to_world(transform, touch.position) {
+                    touch_position = Some(ray.origin.truncate());
+                }
+            }
+        }
+
+        if let Some(touch_pos) = touch_position {
+            // Use touch position directly for mobile
+            target.position = touch_pos;
+            clamp_vec2_to_bounds(&mut target.position);
+        } else if let Some(cursor_position) = window.cursor_position() {
+            // Desktop cursor fallback
             if let Some(ray) = camera.viewport_to_world(transform, cursor_position) {
                 target.position = ray.origin.truncate();
                 clamp_vec2_to_bounds(&mut target.position);
             }
         } else if run_state.is_running() {
+            // Desktop mouse motion fallback
             let mut delta = Vec2::ZERO;
             for event in motion_events.read() {
                 delta.x += event.delta.x;
@@ -775,6 +900,7 @@ fn update_pointer_target(
 
     if !run_state.is_running() {
         motion_events.clear();
+        touch_events.clear();
     }
 }
 
@@ -827,6 +953,15 @@ fn tick_shield_state(time: Res<Time>, mut shield: ResMut<ShieldState>) {
         timer.tick(time.delta());
         if timer.finished() {
             shield.clear();
+        }
+    }
+}
+
+fn tick_wave_blast_timer(time: Res<Time>, mut combat: ResMut<PlayerCombatStats>) {
+    if let Some(timer) = combat.wave_blast_timer.as_mut() {
+        timer.tick(time.delta());
+        if timer.finished() {
+            combat.wave_blast_timer = None;
         }
     }
 }
@@ -913,7 +1048,7 @@ fn update_trail_segments(
 // V2.7: Spawn enemies as emoji
 fn spawn_enemies(
     mut commands: Commands,
-    game_font: Res<GameFont>,
+    _game_font: Res<GameFont>,
     time: Res<Time>,
     run_state: Res<RunState>,
     mut spawn_timer: ResMut<EnemySpawnTimer>,
@@ -1007,7 +1142,7 @@ fn move_enemies(
 // V2.7: Added game_font for power-up spawning
 fn handle_trail_collisions(
     mut commands: Commands,
-    game_font: Res<GameFont>,
+    _game_font: Res<GameFont>,
     run_state: Res<RunState>,
     mut score: ResMut<Score>,
     mut combo: ResMut<Combo>,
@@ -1067,7 +1202,7 @@ fn handle_trail_collisions(
             // JUICE: Spawn death explosion particles
             spawn_death_explosion(&mut commands, position);
             
-            maybe_spawn_power_up(&mut commands, &game_font.0, rng, position);
+            maybe_spawn_power_up(&mut commands, &_game_font.0, rng, position);
             commands.entity(entity).despawn_recursive();
         }
     }
@@ -1164,6 +1299,11 @@ fn handle_power_up_pickups(
                     combat.accuracy_stacks += 1;
                     Color::srgba(1.0, 0.4, 1.0, 1.0) // Purple
                 }
+                PowerUpKind::WaveBlast => {
+                    // NEW: Grant wave blast power-up
+                    combat.activate_wave_blast();
+                    Color::srgba(0.1, 0.6, 1.0, 1.0) // Blue
+                }
             };
 
             // JUICE: Light screen shake on pickup
@@ -1212,16 +1352,7 @@ fn update_ui(
     shield: Res<ShieldState>,
     combat: Res<PlayerCombatStats>,
     mut score_text: Query<&mut Text, With<HudScore>>,
-    mut health_text: Query<
-        &mut Text,
-        (
-            With<HudHealth>,
-            Without<HudScore>,
-            Without<HudCombo>,
-            Without<HudBuffs>,
-            Without<HudStatus>,
-        ),
-    >,
+    mut health_bar: Query<&mut Style, With<HudHealthBar>>, // NEW: Visual health bar
     mut combo_text: Query<
         &mut Text,
         (
@@ -1258,9 +1389,10 @@ fn update_ui(
         text.sections[0].value = format!("Score: {} | Best: {}", score.current, score.best);
     }
 
-    // Update health
-    if let Ok(mut text) = health_text.get_single_mut() {
-        text.sections[0].value = format!("Health: {}/{}", health.current, health.max);
+    // Update visual health bar
+    if let Ok(mut health_bar_style) = health_bar.get_single_mut() {
+        let health_percentage = (health.current as f32 / health.max as f32) * 100.0;
+        health_bar_style.width = Val::Percent(health_percentage);
     }
 
     // Update combo
@@ -1276,7 +1408,18 @@ fn update_ui(
         } else {
             "Shield: Ready".to_string()
         };
-        text.sections[0].value = format!("Damage x{:.1} | {}", damage_multiplier, shield_text);
+
+        let wave_text = if combat.has_wave_blast() {
+            if let Some(remaining) = combat.wave_blast_remaining() {
+                format!(" | Wave: {:.1}s", remaining)
+            } else {
+                " | Wave: Active".to_string()
+            }
+        } else {
+            "".to_string()
+        };
+
+        text.sections[0].value = format!("Damage x{:.1} | {}{}", damage_multiplier, shield_text, wave_text);
     }
 
     // Update status
@@ -1292,8 +1435,26 @@ fn update_ui(
     }
 }
 
+fn update_game_over_ui(
+    run_state: Res<RunState>,
+    mut game_over_overlay: Query<&mut Visibility, (With<GameOverOverlay>, Without<RespawnButton>)>,
+    mut respawn_button: Query<&mut Visibility, (With<RespawnButton>, Without<GameOverOverlay>)>,
+) {
+    let is_game_over = !run_state.active;
+    let visibility = if is_game_over { Visibility::Visible } else { Visibility::Hidden };
+
+    if let Ok(mut overlay_visibility) = game_over_overlay.get_single_mut() {
+        *overlay_visibility = visibility;
+    }
+
+    if let Ok(mut button_visibility) = respawn_button.get_single_mut() {
+        *button_visibility = visibility;
+    }
+}
+
 fn handle_restart(
     keys: Res<ButtonInput<KeyCode>>,
+    mut restart_trigger: ResMut<RestartTrigger>, // NEW: Check touch trigger
     mut run_state: ResMut<RunState>,
     mut score: ResMut<Score>,
     mut combo: ResMut<Combo>,
@@ -1312,7 +1473,10 @@ fn handle_restart(
         return;
     }
 
-    if !keys.just_pressed(KeyCode::Space) {
+    let should_restart = keys.just_pressed(KeyCode::Space) || restart_trigger.requested;
+    restart_trigger.requested = false; // Reset flag
+
+    if !should_restart {
         return;
     }
 
@@ -1338,6 +1502,34 @@ fn handle_restart(
     let mut player_transform = player_query.single_mut();
     player_transform.translation = Vec3::new(0.0, 0.0, player_transform.translation.z);
     pointer.position = player_transform.translation.truncate();
+}
+
+fn handle_touch_respawn(
+    mut touch_events: EventReader<TouchInput>,
+    run_state: Res<RunState>,
+    respawn_button: Query<&GlobalTransform, With<RespawnButton>>,
+    mut restart_trigger: ResMut<RestartTrigger>,
+) {
+    if run_state.active {
+        return; // Only show when game over
+    }
+
+    for touch in touch_events.read() {
+        if let Ok(button_transform) = respawn_button.get_single() {
+            let button_bounds = button_transform.translation().truncate();
+            let touch_pos = touch.position;
+
+            // Check if touch is within button bounds (simple rectangular check)
+            let button_size = Vec2::new(120.0, 60.0);
+            let button_min = button_bounds - button_size * 0.5;
+            let button_max = button_bounds + button_size * 0.5;
+
+            if touch_pos.x >= button_min.x && touch_pos.x <= button_max.x
+                && touch_pos.y >= button_min.y && touch_pos.y <= button_max.y {
+                restart_trigger.requested = true;
+            }
+        }
+    }
 }
 
 fn enforce_cursor_lock(
@@ -1396,8 +1588,8 @@ fn maybe_spawn_power_up(commands: &mut Commands, game_font: &Handle<Font>, rng: 
         return;
     }
 
-    // V2.5: Updated for 4 power-up types
-    let total_weight = POWER_UP_HEART_WEIGHT + POWER_UP_SHIELD_WEIGHT + POWER_UP_DAMAGE_WEIGHT + POWER_UP_ACCURACY_WEIGHT;
+    // V2.5: Updated for 5 power-up types
+    let total_weight = POWER_UP_HEART_WEIGHT + POWER_UP_SHIELD_WEIGHT + POWER_UP_DAMAGE_WEIGHT + POWER_UP_ACCURACY_WEIGHT + POWER_UP_WAVEBLAST_WEIGHT;
     let mut roll = rng.gen::<f32>() * total_weight;
 
     let kind = if roll < POWER_UP_HEART_WEIGHT {
@@ -1411,7 +1603,12 @@ fn maybe_spawn_power_up(commands: &mut Commands, game_font: &Handle<Font>, rng: 
             if roll < POWER_UP_DAMAGE_WEIGHT {
                 PowerUpKind::Damage
             } else {
-                PowerUpKind::Accuracy // V2.5: New option
+                roll -= POWER_UP_DAMAGE_WEIGHT;
+                if roll < POWER_UP_ACCURACY_WEIGHT {
+                    PowerUpKind::Accuracy
+                } else {
+                    PowerUpKind::WaveBlast // NEW: Wave blast power-up
+                }
             }
         }
     };
@@ -1438,6 +1635,10 @@ fn spawn_power_up(commands: &mut Commands, _game_font: &Handle<Font>, position: 
         PowerUpKind::Accuracy => (
             Color::srgba(2.0, 0.2, 2.2, 1.0),  // SUPER bright purple
             Vec2::splat(24.0)                   // Circle (target)
+        ),
+        PowerUpKind::WaveBlast => (
+            Color::srgba(0.1, 0.6, 1.0, 1.0),  // Bright blue
+            Vec2::new(30.0, 20.0)               // Wave shape
         ),
     };
 
@@ -1546,17 +1747,17 @@ fn update_background_tiles(
 }
 
 // V2: Toggle weapon mode
-fn toggle_weapon(
-    keys: Res<ButtonInput<KeyCode>>,
+fn update_weapon_type(
+    combat: Res<PlayerCombatStats>,
     mut player_query: Query<&mut Player>,
 ) {
-    if keys.just_pressed(KeyCode::KeyQ) {
-        if let Ok(mut player) = player_query.get_single_mut() {
-            player.weapon_type = match player.weapon_type {
-                WeaponType::Trail => WeaponType::Wave,
-                WeaponType::Wave => WeaponType::Trail,
-            };
-        }
+    // NEW: Automatically switch to wave weapon when wave blast is active
+    if let Ok(mut player) = player_query.get_single_mut() {
+        player.weapon_type = if combat.has_wave_blast() {
+            WeaponType::Wave
+        } else {
+            WeaponType::Trail
+        };
     }
 }
 
@@ -1683,7 +1884,7 @@ fn update_wave_projectiles(
 // V2.7: Added game_font for power-up spawning
 fn handle_wave_collisions(
     mut commands: Commands,
-    game_font: Res<GameFont>,
+    _game_font: Res<GameFont>,
     mut score: ResMut<Score>,
     mut combo: ResMut<Combo>,
     mut rng: Local<Option<StdRng>>,
@@ -1713,7 +1914,7 @@ fn handle_wave_collisions(
                     camera_shake.trauma = (camera_shake.trauma + 0.15).min(1.0);
                     hit_freeze.timer = Timer::from_seconds(HIT_FREEZE_DURATION, TimerMode::Once);
                     spawn_death_explosion(&mut commands, enemy_pos);
-                    maybe_spawn_power_up(&mut commands, &game_font.0, rng, enemy_pos);
+                    maybe_spawn_power_up(&mut commands, &_game_font.0, rng, enemy_pos);
                     commands.entity(enemy_entity).despawn_recursive();
                 }
                 
