@@ -318,6 +318,8 @@ dependencies = [
  "log",
  "rand",
  "uuid",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]

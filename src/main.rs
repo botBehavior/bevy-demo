@@ -29,16 +29,15 @@ const COMBO_MULTIPLIER_STEP: f32 = 0.5;
 const BASE_SCORE: u32 = 10;
 const ARENA_BOUNDS: Vec2 = Vec2::new(1024.0, 768.0);
 const ENEMY_BASE_HEALTH: u32 = 3; // Was 4 - easier early game
-const TRAIL_BASE_DAMAGE: u32 = 3; // Was 1 - feel powerful early
-const DAMAGE_POWER_BONUS: f32 = 0.5;
+const TRAIL_BASE_DAMAGE: u32 = 3; // Base trail damage
 const SHIELD_DURATION: f32 = 4.0; // Was 10 - tactical not invincible
 const POWER_UP_LIFETIME: f32 = 12.0;
 const POWER_UP_DROP_CHANCE: f32 = 0.15; // Was 0.35 - rare = special
-const POWER_UP_HEART_WEIGHT: f32 = 0.30; // Rebalanced for 5 types
-const POWER_UP_SHIELD_WEIGHT: f32 = 0.20;
-const POWER_UP_DAMAGE_WEIGHT: f32 = 0.20;
-const POWER_UP_ACCURACY_WEIGHT: f32 = 0.15; // V2.5: New accuracy power-up
-const POWER_UP_WAVEBLAST_WEIGHT: f32 = 0.15; // NEW: Wave blast power-up
+const POWER_UP_HEART_WEIGHT: f32 = 0.35; // Rebalanced for currency
+const POWER_UP_SHIELD_WEIGHT: f32 = 0.25;
+const POWER_UP_CURRENCY_WEIGHT: f32 = 0.15; // NEW: Rare currency power-up
+const POWER_UP_ACCURACY_WEIGHT: f32 = 0.15; // Accuracy power-up
+const POWER_UP_WAVEBLAST_WEIGHT: f32 = 0.10; // Wave blast power-up (rarer)
 
 // Game Feel Constants
 const SCREEN_SHAKE_DECAY: f32 = 3.0;
@@ -84,6 +83,7 @@ fn main() {
         .insert_resource(ShieldState::default())
         .insert_resource(CursorLockState::default())
         .insert_resource(Score::default())
+        .insert_resource(Currency::default()) // NEW: Persistent currency
         .insert_resource(Combo::default())
         .insert_resource(EnemySpawnTimer::default())
         .insert_resource(TrailSpawnTimer::default())
@@ -131,10 +131,8 @@ fn main() {
                 handle_power_up_pickups,
                 tick_power_up_lifetimes,
                 tick_combo,
-                tick_wave_blast_timer, // NEW: Update wave blast timer
+                tick_wave_blast_timer, // Update wave blast timer
                 update_ui,
-                update_game_over_ui, // NEW: Show/hide game over overlay
-                handle_touch_respawn, // NEW: Touch respawn support
                 handle_restart,
                 handle_pause_toggle,
                 enforce_cursor_lock,
@@ -175,6 +173,45 @@ fn main() {
 #[cfg(target_arch = "wasm32")]
 fn init_wasm_panic_hooks() {
     console_error_panic_hook::set_once();
+}
+
+#[cfg(target_arch = "wasm32")]
+fn load_currency_from_storage() -> u32 {
+    use wasm_bindgen::JsCast;
+    use web_sys::{window, Storage};
+
+    if let Some(window) = window() {
+        if let Ok(Some(storage)) = window.local_storage() {
+            if let Ok(Some(currency_str)) = storage.get_item("threadweaver_currency") {
+                if let Ok(currency) = currency_str.parse::<u32>() {
+                    return currency;
+                }
+            }
+        }
+    }
+    0 // Default to 0 if loading fails
+}
+
+#[cfg(target_arch = "wasm32")]
+fn save_currency_to_storage(currency: u32) {
+    use wasm_bindgen::JsCast;
+    use web_sys::{window, Storage};
+
+    if let Some(window) = window() {
+        if let Ok(Some(storage)) = window.local_storage() {
+            let _ = storage.set_item("threadweaver_currency", &currency.to_string());
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn load_currency_from_storage() -> u32 {
+    0 // No persistence on desktop for now
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn save_currency_to_storage(_currency: u32) {
+    // No persistence on desktop for now
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -299,10 +336,6 @@ struct CursorLockState {
     locked: bool,
 }
 
-#[derive(Resource, Default)]
-struct RestartTrigger {
-    requested: bool,
-}
 
 #[derive(Resource)]
 struct PlayerHealth {
@@ -367,29 +400,23 @@ impl ShieldState {
 #[derive(Resource)]
 struct PlayerCombatStats {
     base_trail_damage: f32,
-    bonus_multiplier: f32,
-    accuracy_stacks: u32, // V2.5: Accuracy power-up tracking
-    wave_blast_timer: Option<Timer>, // NEW: Wave blast power-up timer
+    accuracy_stacks: u32, // Accuracy power-up tracking
+    wave_blast_timer: Option<Timer>, // Wave blast power-up timer
 }
 
 impl Default for PlayerCombatStats {
     fn default() -> Self {
         Self {
             base_trail_damage: TRAIL_BASE_DAMAGE as f32,
-            bonus_multiplier: 0.0,
-            accuracy_stacks: 0, // V2.5: Start with no accuracy
-            wave_blast_timer: None, // NEW: Start without wave blast
+            accuracy_stacks: 0, // Start with no accuracy
+            wave_blast_timer: None, // Start without wave blast
         }
     }
 }
 
 impl PlayerCombatStats {
     fn trail_damage(&self) -> f32 {
-        self.base_trail_damage * (1.0 + self.bonus_multiplier)
-    }
-
-    fn add_bonus(&mut self) {
-        self.bonus_multiplier += DAMAGE_POWER_BONUS;
+        self.base_trail_damage as f32 // Simplified - no multipliers
     }
 
     fn activate_wave_blast(&mut self) {
@@ -407,16 +434,48 @@ impl PlayerCombatStats {
     }
 
     fn reset(&mut self) {
-        self.bonus_multiplier = 0.0;
         self.accuracy_stacks = 0;
         self.wave_blast_timer = None;
     }
 }
 
-#[derive(Resource, Default)]
+#[derive(Resource)]
 struct Score {
     current: u32,
     best: u32,
+}
+
+impl Default for Score {
+    fn default() -> Self {
+        Self {
+            current: 0,
+            best: 0,
+        }
+    }
+}
+
+#[derive(Resource)]
+struct Currency {
+    current: u32,
+}
+
+impl Default for Currency {
+    fn default() -> Self {
+        Self {
+            current: load_currency_from_storage(),
+        }
+    }
+}
+
+impl Currency {
+    fn save(&self) {
+        save_currency_to_storage(self.current);
+    }
+
+    fn add(&mut self, amount: u32) {
+        self.current += amount;
+        self.save();
+    }
 }
 
 #[derive(Resource)]
@@ -492,12 +551,6 @@ struct HudStatus;
 struct HudHealthBar;
 
 #[derive(Component)]
-struct RespawnButton;
-
-#[derive(Component)]
-struct GameOverOverlay;
-
-#[derive(Component)]
 struct PowerUp {
     kind: PowerUpKind,
 }
@@ -562,9 +615,9 @@ struct GameFont(Handle<Font>);
 enum PowerUpKind {
     Heart,
     Shield,
-    Damage,
+    Currency, // NEW: Persistent currency power-up
     Accuracy, // V2.5: New power-up
-    WaveBlast, // NEW: Wave weapon power-up
+    WaveBlast, // Wave weapon power-up
 }
 
 impl Default for TrailSpawnTimer {
@@ -649,10 +702,12 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 position_type: PositionType::Absolute,
                 top: Val::Px(20.0),
                 right: Val::Px(20.0),
+                padding: UiRect::all(Val::Px(10.0)),
                 flex_direction: FlexDirection::Column,
                 row_gap: Val::Px(8.0),
                 ..Default::default()
             },
+            background_color: Color::srgba(0.0, 0.0, 0.0, 0.7).into(), // Add background for visibility
             ..Default::default()
         })
         .with_children(|parent| {
@@ -729,66 +784,8 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             ));
         });
 
-    // Game Over Overlay (shown when game is over)
-    commands.spawn((
-        NodeBundle {
-            style: Style {
-                position_type: PositionType::Absolute,
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            background_color: Color::srgba(0.0, 0.0, 0.0, 0.7).into(),
-            ..default()
-        },
-        GameOverOverlay,
-    )).with_children(|parent| {
-        parent.spawn(TextBundle {
-            text: Text::from_section(
-                "GAME OVER\nTap RESPAWN button to continue",
-                TextStyle {
-                    font: font.clone(),
-                    font_size: 32.0,
-                    color: Color::WHITE,
-                },
-            ),
-            ..default()
-        });
-    });
-
-    // Respawn button (mobile-friendly, only visible when game over)
-    commands.spawn((
-        NodeBundle {
-            style: Style {
-                position_type: PositionType::Absolute,
-                bottom: Val::Px(50.0),
-                left: Val::Px(50.0),
-                width: Val::Px(120.0),
-                height: Val::Px(60.0),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            background_color: Color::srgba(0.2, 0.8, 1.0, 0.8).into(),
-            ..default()
-        },
-        RespawnButton,
-    )).with_children(|parent| {
-        parent.spawn(TextBundle::from_section(
-            "RESPAWN",
-            TextStyle {
-                font: font,
-                font_size: 16.0,
-                color: Color::WHITE,
-            },
-        ));
-    });
-
     // Initialize hit freeze
     commands.insert_resource(HitFreeze::default());
-    commands.insert_resource(RestartTrigger::default());
 }
 
 // Spawn death explosion particles (sprite-based)
@@ -853,7 +850,6 @@ fn update_pointer_target(
     run_state: Res<RunState>,
     mut target: ResMut<PointerTarget>,
     mut motion_events: EventReader<MouseMotion>,
-    mut touch_events: EventReader<TouchInput>, // NEW: Touch input support
     windows: Query<&Window, With<PrimaryWindow>>,
     camera_query: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
 ) {
@@ -862,23 +858,8 @@ fn update_pointer_target(
     };
 
     if let Ok((camera, transform)) = camera_query.get_single() {
-        // Handle touch input (mobile)
-        let mut touch_position = None;
-        for touch in touch_events.read() {
-            if touch.phase == bevy::input::touch::TouchPhase::Moved
-                || touch.phase == bevy::input::touch::TouchPhase::Started {
-                if let Some(ray) = camera.viewport_to_world(transform, touch.position) {
-                    touch_position = Some(ray.origin.truncate());
-                }
-            }
-        }
-
-        if let Some(touch_pos) = touch_position {
-            // Use touch position directly for mobile
-            target.position = touch_pos;
-            clamp_vec2_to_bounds(&mut target.position);
-        } else if let Some(cursor_position) = window.cursor_position() {
-            // Desktop cursor fallback
+        if let Some(cursor_position) = window.cursor_position() {
+            // This works for both desktop mouse AND mobile touch (auto-converted by browser)
             if let Some(ray) = camera.viewport_to_world(transform, cursor_position) {
                 target.position = ray.origin.truncate();
                 clamp_vec2_to_bounds(&mut target.position);
@@ -900,7 +881,6 @@ fn update_pointer_target(
 
     if !run_state.is_running() {
         motion_events.clear();
-        touch_events.clear();
     }
 }
 
@@ -1266,6 +1246,7 @@ fn handle_power_up_pickups(
     mut player_health: ResMut<PlayerHealth>,
     mut shield: ResMut<ShieldState>,
     mut combat: ResMut<PlayerCombatStats>,
+    mut currency: ResMut<Currency>, // NEW: Currency resource
     mut camera_query: Query<&mut ScreenShake, With<MainCamera>>,
     player_query: Query<&Transform, With<Player>>,
     mut power_ups: Query<(Entity, &Transform, &PowerUp)>,
@@ -1290,9 +1271,9 @@ fn handle_power_up_pickups(
                     shield.activate();
                     Color::srgba(0.5, 0.8, 1.0, 1.0)
                 }
-                PowerUpKind::Damage => {
-                    combat.add_bonus();
-                    Color::srgba(1.0, 0.8, 0.3, 1.0)
+                PowerUpKind::Currency => {
+                    currency.add(1); // Award 1 currency point (auto-saves)
+                    Color::srgba(2.5, 2.0, 0.0, 1.0) // Gold
                 }
                 PowerUpKind::Accuracy => {
                     // V2.5: Grant accuracy - makes movement snappier
@@ -1351,6 +1332,7 @@ fn update_ui(
     health: Res<PlayerHealth>,
     shield: Res<ShieldState>,
     combat: Res<PlayerCombatStats>,
+    currency: Res<Currency>, // NEW: Currency display
     mut score_text: Query<&mut Text, With<HudScore>>,
     mut health_bar: Query<&mut Style, With<HudHealthBar>>, // NEW: Visual health bar
     mut combo_text: Query<
@@ -1402,7 +1384,6 @@ fn update_ui(
 
     // Update buffs
     if let Ok(mut text) = buffs_text.get_single_mut() {
-        let damage_multiplier = combat.trail_damage() / combat.base_trail_damage;
         let shield_text = if let Some(remaining) = shield.remaining_seconds() {
             format!("Shield: {:.1}s", remaining)
         } else {
@@ -1419,7 +1400,7 @@ fn update_ui(
             "".to_string()
         };
 
-        text.sections[0].value = format!("Damage x{:.1} | {}{}", damage_multiplier, shield_text, wave_text);
+        text.sections[0].value = format!("Coins: {} | {}{}", currency.current, shield_text, wave_text);
     }
 
     // Update status
@@ -1435,26 +1416,8 @@ fn update_ui(
     }
 }
 
-fn update_game_over_ui(
-    run_state: Res<RunState>,
-    mut game_over_overlay: Query<&mut Visibility, (With<GameOverOverlay>, Without<RespawnButton>)>,
-    mut respawn_button: Query<&mut Visibility, (With<RespawnButton>, Without<GameOverOverlay>)>,
-) {
-    let is_game_over = !run_state.active;
-    let visibility = if is_game_over { Visibility::Visible } else { Visibility::Hidden };
-
-    if let Ok(mut overlay_visibility) = game_over_overlay.get_single_mut() {
-        *overlay_visibility = visibility;
-    }
-
-    if let Ok(mut button_visibility) = respawn_button.get_single_mut() {
-        *button_visibility = visibility;
-    }
-}
-
 fn handle_restart(
     keys: Res<ButtonInput<KeyCode>>,
-    mut restart_trigger: ResMut<RestartTrigger>, // NEW: Check touch trigger
     mut run_state: ResMut<RunState>,
     mut score: ResMut<Score>,
     mut combo: ResMut<Combo>,
@@ -1473,10 +1436,7 @@ fn handle_restart(
         return;
     }
 
-    let should_restart = keys.just_pressed(KeyCode::Space) || restart_trigger.requested;
-    restart_trigger.requested = false; // Reset flag
-
-    if !should_restart {
+    if !keys.just_pressed(KeyCode::Space) {
         return;
     }
 
@@ -1502,34 +1462,6 @@ fn handle_restart(
     let mut player_transform = player_query.single_mut();
     player_transform.translation = Vec3::new(0.0, 0.0, player_transform.translation.z);
     pointer.position = player_transform.translation.truncate();
-}
-
-fn handle_touch_respawn(
-    mut touch_events: EventReader<TouchInput>,
-    run_state: Res<RunState>,
-    respawn_button: Query<&GlobalTransform, With<RespawnButton>>,
-    mut restart_trigger: ResMut<RestartTrigger>,
-) {
-    if run_state.active {
-        return; // Only show when game over
-    }
-
-    for touch in touch_events.read() {
-        if let Ok(button_transform) = respawn_button.get_single() {
-            let button_bounds = button_transform.translation().truncate();
-            let touch_pos = touch.position;
-
-            // Check if touch is within button bounds (simple rectangular check)
-            let button_size = Vec2::new(120.0, 60.0);
-            let button_min = button_bounds - button_size * 0.5;
-            let button_max = button_bounds + button_size * 0.5;
-
-            if touch_pos.x >= button_min.x && touch_pos.x <= button_max.x
-                && touch_pos.y >= button_min.y && touch_pos.y <= button_max.y {
-                restart_trigger.requested = true;
-            }
-        }
-    }
 }
 
 fn enforce_cursor_lock(
@@ -1588,8 +1520,8 @@ fn maybe_spawn_power_up(commands: &mut Commands, game_font: &Handle<Font>, rng: 
         return;
     }
 
-    // V2.5: Updated for 5 power-up types
-    let total_weight = POWER_UP_HEART_WEIGHT + POWER_UP_SHIELD_WEIGHT + POWER_UP_DAMAGE_WEIGHT + POWER_UP_ACCURACY_WEIGHT + POWER_UP_WAVEBLAST_WEIGHT;
+    // Updated for currency power-up
+    let total_weight = POWER_UP_HEART_WEIGHT + POWER_UP_SHIELD_WEIGHT + POWER_UP_CURRENCY_WEIGHT + POWER_UP_ACCURACY_WEIGHT + POWER_UP_WAVEBLAST_WEIGHT;
     let mut roll = rng.gen::<f32>() * total_weight;
 
     let kind = if roll < POWER_UP_HEART_WEIGHT {
@@ -1600,14 +1532,14 @@ fn maybe_spawn_power_up(commands: &mut Commands, game_font: &Handle<Font>, rng: 
             PowerUpKind::Shield
         } else {
             roll -= POWER_UP_SHIELD_WEIGHT;
-            if roll < POWER_UP_DAMAGE_WEIGHT {
-                PowerUpKind::Damage
+            if roll < POWER_UP_CURRENCY_WEIGHT {
+                PowerUpKind::Currency
             } else {
-                roll -= POWER_UP_DAMAGE_WEIGHT;
+                roll -= POWER_UP_CURRENCY_WEIGHT;
                 if roll < POWER_UP_ACCURACY_WEIGHT {
                     PowerUpKind::Accuracy
                 } else {
-                    PowerUpKind::WaveBlast // NEW: Wave blast power-up
+                    PowerUpKind::WaveBlast
                 }
             }
         }
@@ -1628,9 +1560,9 @@ fn spawn_power_up(commands: &mut Commands, _game_font: &Handle<Font>, position: 
             Color::srgba(0.3, 1.8, 2.2, 1.0),  // SUPER bright cyan
             Vec2::new(28.0, 32.0)               // Tall rectangle (shield)
         ),
-        PowerUpKind::Damage => (
-            Color::srgba(2.5, 1.5, 0.2, 1.0),  // SUPER bright gold
-            Vec2::new(22.0, 22.0)               // Diamond shape (sword)
+        PowerUpKind::Currency => (
+            Color::srgba(2.5, 2.0, 0.0, 1.0),  // Bright gold/yellow
+            Vec2::splat(20.0)                   // Circle (coin)
         ),
         PowerUpKind::Accuracy => (
             Color::srgba(2.0, 0.2, 2.2, 1.0),  // SUPER bright purple

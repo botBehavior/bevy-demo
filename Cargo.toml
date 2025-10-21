@@ -28,3 +28,5 @@ avian2d = { version = "0.1", default-features = false, features = ["2d", "f32"] 
 getrandom = { version = "0.3", features = ["std", "wasm_js"] }
 uuid = { version = "1", features = ["std", "rng-getrandom"] }
 console_error_panic_hook = "0.1"
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = ["Window", "Storage"] }
