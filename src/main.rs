@@ -127,6 +127,8 @@ const ENEMY_TURN_SPEED: f32 = 0.18;
 
 // V2: Infinite Space Constants
 const CAMERA_SMOOTHING: f32 = 0.30; // V2.6 FIX: Was 0.08 - way too slow!
+const CAMERA_Z: f32 = 10.0;
+const BACKGROUND_Z: f32 = -5.0;
 const ARENA_SIZE: f32 = 5000.0;
 const ENEMY_SPAWN_DISTANCE: f32 = 600.0;
 
@@ -1240,7 +1242,10 @@ struct MainCamera;
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     // Spawn camera with screen shake
     commands.spawn((
-        Camera2dBundle::default(),
+        Camera2dBundle {
+            transform: Transform::from_xyz(0.0, 0.0, CAMERA_Z),
+            ..Default::default()
+        },
         MainCamera,
         ScreenShake::default(),
     ));
@@ -1255,7 +1260,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn((
         SpriteBundle {
             texture: background_texture,
-            transform: Transform::from_xyz(0.0, 0.0, -200.0), // Even further back to ensure visibility
+            transform: Transform::from_xyz(0.0, 0.0, BACKGROUND_Z),
             sprite: Sprite {
                 color: Color::srgba(1.0, 1.0, 1.0, 0.8), // More visible background
                 custom_size: Some(Vec2::new(3840.0, 2158.0)), // Full image size
@@ -2514,7 +2519,7 @@ fn update_background_position(
             // Keep background centered on camera position but much further back
             background_transform.translation.x = camera_transform.translation.x;
             background_transform.translation.y = camera_transform.translation.y;
-            background_transform.translation.z = -200.0; // Stay far back
+            background_transform.translation.z = BACKGROUND_Z;
         }
     }
 }
@@ -2531,7 +2536,7 @@ fn camera_follow_player(
             // Smooth lerp follow
             camera_transform.translation.x += (target.x - camera_transform.translation.x) * CAMERA_SMOOTHING;
             camera_transform.translation.y += (target.y - camera_transform.translation.y) * CAMERA_SMOOTHING;
-            camera_transform.translation.z = 999.9; // Keep camera Z fixed
+            camera_transform.translation.z = CAMERA_Z; // Keep camera Z fixed
         }
     }
 }
@@ -2591,7 +2596,7 @@ fn update_background_tiles(
                     transform: Transform::from_xyz(
                         gx as f32 * tile_width,
                         gy as f32 * tile_height,
-                        -100.0, // Far back but visible
+                        BACKGROUND_Z,
                     ),
                     sprite: Sprite {
                         color: Color::srgba(1.0, 1.0, 1.0, 1.0), // TEMP: Full opacity to ensure visibility
