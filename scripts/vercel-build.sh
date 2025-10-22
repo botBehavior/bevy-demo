@@ -14,3 +14,10 @@ if ! command -v trunk >/dev/null 2>&1; then
 fi
 
 trunk build --release
+
+mkdir -p dist/assets
+if command -v rsync >/dev/null 2>&1; then
+  rsync -a assets/ dist/assets/
+else
+  cp -a assets/. dist/assets/
+fi
