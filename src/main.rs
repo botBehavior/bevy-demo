@@ -304,15 +304,20 @@ fn apply_hud_layout_changes(
 fn apply_shop_layout_changes(
     layout: Res<UiLayout>,
     typography: Res<UiTypography>,
-    mut shop_button_container: Query<&mut Style, With<ShopButtonContainer>>,
-    mut shop_button: Query<&mut Style, With<ShopButton>>,
-    mut shop_modal_overlay: Query<&mut Style, With<ShopModalBackground>>,
-    mut shop_modal_content: Query<&mut Style, With<ShopModalContent>>,
-    mut close_button: Query<&mut Style, With<CloseShopButton>>,
-    mut shop_items_grid: Query<&mut Style, With<ShopItemsGrid>>,
-    mut shop_item_cards: Query<&mut Style, With<ShopItemButton>>,
-    mut shop_item_purchase_buttons: Query<&mut Style, With<ShopItemPurchaseButton>>,
-    mut shop_feedback_container: Query<&mut Style, With<ShopFeedbackContainer>>,
+    mut shop_styles: Query<
+        (
+            &mut Style,
+            Option<&ShopButtonContainer>,
+            Option<&ShopButton>,
+            Option<&ShopModalBackground>,
+            Option<&ShopModalContent>,
+            Option<&CloseShopButton>,
+            Option<&ShopItemsGrid>,
+            Option<&ShopItemButton>,
+            Option<&ShopItemPurchaseButton>,
+            Option<&ShopFeedbackContainer>,
+        ),
+    >,
 ) {
     let layout_changed = layout.is_changed();
     let typography_changed = typography.is_changed();
@@ -320,62 +325,92 @@ fn apply_shop_layout_changes(
         return;
     }
 
-    if let Ok(mut style) = shop_button_container.get_single_mut() {
-        style.bottom = Val::Px(layout.safe_margin());
-    }
-    if let Ok(mut style) = shop_button.get_single_mut() {
-        style.padding = UiRect::axes(
-            Val::Px(layout.safe_margin() * if layout.is_compact() { 0.9 } else { 1.1 }),
-            Val::Px(layout.safe_margin() * 0.7),
-        );
-        style.min_width = if layout.is_compact() {
-            Val::Percent(65.0)
-        } else {
-            Val::Px(220.0)
-        };
-    }
-
-    if let Ok(mut style) = shop_modal_overlay.get_single_mut() {
-        style.padding = UiRect::all(Val::Px(layout.safe_margin()));
-    }
-    if let Ok(mut style) = shop_modal_content.get_single_mut() {
-        style.width = layout.shop_container_width();
-        style.row_gap = Val::Px(layout.vertical_gap() * 1.4);
-        style.padding = UiRect::all(Val::Px(layout.safe_margin()));
-    }
-    if let Ok(mut style) = close_button.get_single_mut() {
-        let close_size = typography.shop_heading() * 1.5;
-        style.min_width = Val::Px(close_size);
-        style.min_height = Val::Px(close_size);
-    }
-
+    let safe_margin = layout.safe_margin();
     let card_gap = layout.shop_card_gap();
-    if let Ok(mut style) = shop_items_grid.get_single_mut() {
-        style.row_gap = Val::Px(card_gap);
-        style.column_gap = Val::Px(card_gap);
-    }
+    let card_basis = layout.shop_card_basis();
+    let vertical_gap = layout.vertical_gap();
+    let horizontal_gap = layout.horizontal_gap();
+    let button_padding_main = safe_margin * if layout.is_compact() { 0.9 } else { 1.1 };
+    let button_padding_cross = safe_margin * 0.7;
+    let button_min_width = if layout.is_compact() {
+        Val::Percent(65.0)
+    } else {
+        Val::Px(220.0)
+    };
+    let purchase_min_width = if layout.is_compact() {
+        Val::Px(100.0)
+    } else {
+        Val::Px(120.0)
+    };
 
-    for mut style in &mut shop_item_cards {
-        style.row_gap = Val::Px(card_gap * 0.5);
-        style.padding = UiRect::all(Val::Px(card_gap * 0.6));
-        style.margin = UiRect::all(Val::Px(card_gap * 0.5));
-        style.flex_basis = layout.shop_card_basis();
-        style.min_height = Val::Px(if layout.is_compact() { 180.0 } else { 200.0 });
-    }
+    for (
+        mut style,
+        is_button_container,
+        is_button,
+        is_modal_background,
+        is_modal_content,
+        is_close_button,
+        is_items_grid,
+        is_item_card,
+        is_purchase_button,
+        is_feedback_container,
+    ) in &mut shop_styles
+    {
+        if is_button_container.is_some() {
+            style.bottom = Val::Px(safe_margin);
+        }
 
-    for mut style in &mut shop_item_purchase_buttons {
-        style.padding = UiRect::axes(
-            Val::Px(card_gap * 0.4),
-            Val::Px(card_gap * 0.3),
-        );
-        style.min_width = Val::Px(if layout.is_compact() { 100.0 } else { 120.0 });
-    }
+        if is_button.is_some() {
+            style.padding = UiRect::axes(
+                Val::Px(button_padding_main),
+                Val::Px(button_padding_cross),
+            );
+            style.min_width = button_min_width;
+        }
 
-    if let Ok(mut style) = shop_feedback_container.get_single_mut() {
-        style.padding = UiRect::axes(
-            Val::Px(layout.horizontal_gap() * 2.0),
-            Val::Px(layout.vertical_gap() * 1.4),
-        );
+        if is_modal_background.is_some() {
+            style.padding = UiRect::all(Val::Px(safe_margin));
+        }
+
+        if is_modal_content.is_some() {
+            style.width = layout.shop_container_width();
+            style.row_gap = Val::Px(vertical_gap * 1.4);
+            style.padding = UiRect::all(Val::Px(safe_margin));
+        }
+
+        if is_close_button.is_some() {
+            let close_size = typography.shop_heading() * 1.5;
+            style.min_width = Val::Px(close_size);
+            style.min_height = Val::Px(close_size);
+        }
+
+        if is_items_grid.is_some() {
+            style.row_gap = Val::Px(card_gap);
+            style.column_gap = Val::Px(card_gap);
+        }
+
+        if is_item_card.is_some() {
+            style.row_gap = Val::Px(card_gap * 0.5);
+            style.padding = UiRect::all(Val::Px(card_gap * 0.6));
+            style.margin = UiRect::all(Val::Px(card_gap * 0.5));
+            style.flex_basis = card_basis;
+            style.min_height = Val::Px(if layout.is_compact() { 180.0 } else { 200.0 });
+        }
+
+        if is_purchase_button.is_some() {
+            style.padding = UiRect::axes(
+                Val::Px(card_gap * 0.4),
+                Val::Px(card_gap * 0.3),
+            );
+            style.min_width = purchase_min_width;
+        }
+
+        if is_feedback_container.is_some() {
+            style.padding = UiRect::axes(
+                Val::Px(horizontal_gap * 2.0),
+                Val::Px(vertical_gap * 1.4),
+            );
+        }
     }
 }
 
