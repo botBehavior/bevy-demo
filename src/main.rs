@@ -433,7 +433,7 @@ fn main() {
             Update,
             (
                 camera_follow_player,
-                update_background_tiles, // V2.5: Infinite background
+                update_background_position, // Make background follow camera
                 update_weapon_type, // NEW: Auto-switch based on wave blast
                 spawn_wave_projectiles,
                 update_wave_projectiles,
@@ -1249,46 +1249,31 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font = asset_server.load("fonts/FiraSans-Bold.ttf");
     commands.insert_resource(GameFont(font.clone()));
     
-    // V2.7: Load background image (4K space image) - will be dynamically tiled
-    let background_texture = asset_server.load("240_F_324745441_29s2iZ2NoUgq12WDBQcJ4CRjPn82Kc0D_imgupscaler.ai_General_4K.jpg");
-    
-    // V2.7: Spawn initial tiled background (large tiles for infinite feel)
-    // Image is 3840x2158, scale it to fill large space
-    let tile_width = 3840.0;
-    let tile_height = 2158.0;
-    
-    for x in -2..=2 {
-        for y in -2..=2 {
-            commands.spawn((
-                SpriteBundle {
-                    texture: background_texture.clone(),
-                    transform: Transform::from_xyz(
-                        x as f32 * tile_width,
-                        y as f32 * tile_height,
-                        -100.0, // Far back but visible
-                    ),
-                    sprite: Sprite {
-                        color: Color::srgba(1.0, 1.0, 1.0, 0.4), // Dim for atmosphere
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                },
-                Background,
-                BackgroundTile {
-                    grid_x: x,
-                    grid_y: y,
-                },
-            ));
-        }
-    }
+    // Load and spawn single background image
+    let background_texture = asset_server.load("background.png");
 
-    // V2.7: Player as bright glowing sprite
     commands.spawn((
         SpriteBundle {
+            texture: background_texture,
+            transform: Transform::from_xyz(0.0, 0.0, -200.0), // Even further back to ensure visibility
+            sprite: Sprite {
+                color: Color::srgba(1.0, 1.0, 1.0, 0.8), // More visible background
+                custom_size: Some(Vec2::new(3840.0, 2158.0)), // Full image size
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        Background,
+    ));
+
+    // Player with PNG sprite
+    let player_texture = asset_server.load("sprites/player.png");
+    commands.spawn((
+        SpriteBundle {
+            texture: player_texture,
             transform: Transform::from_xyz(0.0, 0.0, 0.2),
             sprite: Sprite {
-                color: Color::srgba(0.4, 1.5, 2.0, 1.0), // SUPER bright cyan glow
-                custom_size: Some(Vec2::splat(32.0)), // Larger player
+                custom_size: Some(Vec2::splat(32.0)), // Match SVG size
                 ..Default::default()
             },
             ..Default::default()
@@ -1860,6 +1845,7 @@ fn clamp_vec2_to_bounds(position: &mut Vec2) {
 
 fn spawn_trail_segments(
     mut commands: Commands,
+    asset_server: Res<AssetServer>,
     time: Res<Time>,
     run_state: Res<RunState>,
     mut timer: ResMut<TrailSpawnTimer>,
@@ -1887,13 +1873,14 @@ fn spawn_trail_segments(
 
     let position = transform.translation;
 
-    // V2: Brighter trail with glow
+    // Trail segment with PNG sprite
+    let trail_texture = asset_server.load("sprites/effects/trail_segment.png");
     commands.spawn((
         SpriteBundle {
+            texture: trail_texture,
             transform: Transform::from_xyz(position.x, position.y, 0.1),
             sprite: Sprite {
-                color: Color::srgba(0.5, 1.2, 1.4, 0.95), // Much brighter cyan
-                custom_size: Some(Vec2::splat(18.0)),
+                custom_size: Some(Vec2::splat(16.0)), // Match SVG size
                 ..Default::default()
             },
             ..Default::default()
@@ -1926,7 +1913,7 @@ fn update_trail_segments(
 // V2.7: Spawn enemies as emoji
 fn spawn_enemies(
     mut commands: Commands,
-    _game_font: Res<GameFont>,
+    asset_server: Res<AssetServer>,
     time: Res<Time>,
     run_state: Res<RunState>,
     mut spawn_timer: ResMut<EnemySpawnTimer>,
@@ -1968,13 +1955,14 @@ fn spawn_enemies(
     let health_scaling = 1.0 + (score.current as f32 / 500.0); // +1 HP every 500 points
     let enemy_health = base_health * health_scaling;
 
-    // V2.7: Enemy as bright glowing sprite
+    // Enemy with PNG sprite
+    let enemy_texture = asset_server.load("sprites/enemy_basic.png");
     commands.spawn((
         SpriteBundle {
+            texture: enemy_texture,
             transform: Transform::from_xyz(position.x, position.y, 0.15),
             sprite: Sprite {
-                color: Color::srgba(2.0, 0.3, 0.4, 1.0), // SUPER bright red glow
-                custom_size: Some(Vec2::new(40.0, 36.0)), // Rectangular enemies
+                custom_size: Some(Vec2::new(40.0, 36.0)), // Match SVG size
                 ..Default::default()
             },
             ..Default::default()
@@ -2031,13 +2019,13 @@ fn calculate_enemy_knockback(upgrades: &PurchasedUpgrades) -> f32 {
 
 fn handle_trail_collisions(
     mut commands: Commands,
-    _game_font: Res<GameFont>,
+    asset_server: Res<AssetServer>,
     run_state: Res<RunState>,
     mut score: ResMut<Score>,
     mut combo: ResMut<Combo>,
     mut rng: Local<Option<StdRng>>,
     combat: Res<PlayerCombatStats>,
-    upgrades: Res<PurchasedUpgrades>, // NEW: Add upgrades param
+    upgrades: Res<PurchasedUpgrades>,
     mut hit_freeze: ResMut<HitFreeze>,
     mut camera_query: Query<&mut ScreenShake, With<MainCamera>>,
     mut enemies: Query<(Entity, &Transform, &Enemy, &mut EnemyHealth, &mut Knockback)>,
@@ -2119,7 +2107,7 @@ fn handle_trail_collisions(
             // JUICE: Spawn death explosion particles
             spawn_death_explosion(&mut commands, position);
             
-            maybe_spawn_power_up(&mut commands, &_game_font.0, rng, position);
+            maybe_spawn_power_up(&mut commands, &asset_server, rng, position);
             commands.entity(entity).despawn_recursive();
         }
     }
@@ -2127,6 +2115,7 @@ fn handle_trail_collisions(
 
 fn handle_player_collisions(
     mut commands: Commands,
+    asset_server: Res<AssetServer>,
     mut run_state: ResMut<RunState>,
     mut score: ResMut<Score>,
     mut combo: ResMut<Combo>,
@@ -2452,7 +2441,7 @@ fn handle_pause_toggle(
 }
 
 // V2.7: Updated to pass game font for emoji
-fn maybe_spawn_power_up(commands: &mut Commands, game_font: &Handle<Font>, rng: &mut StdRng, position: Vec2) {
+fn maybe_spawn_power_up(commands: &mut Commands, asset_server: &Res<AssetServer>, rng: &mut StdRng, position: Vec2) {
     if rng.gen::<f32>() > POWER_UP_DROP_CHANCE {
         return;
     }
@@ -2482,40 +2471,27 @@ fn maybe_spawn_power_up(commands: &mut Commands, game_font: &Handle<Font>, rng: 
         }
     };
 
-    spawn_power_up(commands, game_font, position, kind);
+    spawn_power_up(commands, asset_server, position, kind);
 }
 
-// V2.7: Spawn power-ups with distinct shapes and colors
-fn spawn_power_up(commands: &mut Commands, _game_font: &Handle<Font>, position: Vec2, kind: PowerUpKind) {
-    // Distinct size and color for each power-up type
-    let (color, size) = match kind {
-        PowerUpKind::Heart => (
-            Color::srgba(2.2, 0.2, 0.3, 1.0),  // SUPER bright red
-            Vec2::splat(26.0)                   // Circle (heart)
-        ),
-        PowerUpKind::Shield => (
-            Color::srgba(0.3, 1.8, 2.2, 1.0),  // SUPER bright cyan
-            Vec2::new(28.0, 32.0)               // Tall rectangle (shield)
-        ),
-        PowerUpKind::Currency => (
-            Color::srgba(2.5, 2.0, 0.0, 1.0),  // Bright gold/yellow
-            Vec2::splat(20.0)                   // Circle (coin)
-        ),
-        PowerUpKind::Accuracy => (
-            Color::srgba(2.0, 0.2, 2.2, 1.0),  // SUPER bright purple
-            Vec2::splat(24.0)                   // Circle (target)
-        ),
-        PowerUpKind::WaveBlast => (
-            Color::srgba(0.1, 0.6, 1.0, 1.0),  // Bright blue
-            Vec2::new(30.0, 20.0)               // Wave shape
-        ),
+// Spawn power-ups with PNG sprites
+fn spawn_power_up(commands: &mut Commands, asset_server: &Res<AssetServer>, position: Vec2, kind: PowerUpKind) {
+    // Load appropriate PNG texture for each power-up type
+    let (texture_path, size) = match kind {
+        PowerUpKind::Heart => ("sprites/powerups/heart.png", Vec2::splat(26.0)),
+        PowerUpKind::Shield => ("sprites/powerups/shield.png", Vec2::new(28.0, 32.0)),
+        PowerUpKind::Currency => ("sprites/powerups/currency.png", Vec2::splat(20.0)),
+        PowerUpKind::Accuracy => ("sprites/powerups/accuracy.png", Vec2::splat(24.0)),
+        PowerUpKind::WaveBlast => ("sprites/powerups/wave_blast.png", Vec2::new(30.0, 20.0)),
     };
+
+    let texture = asset_server.load(texture_path);
 
     commands.spawn((
         SpriteBundle {
+            texture,
             transform: Transform::from_xyz(position.x, position.y, 0.12),
             sprite: Sprite {
-                color,
                 custom_size: Some(size),
                 ..Default::default()
             },
@@ -2527,6 +2503,21 @@ fn spawn_power_up(commands: &mut Commands, _game_font: &Handle<Font>, position: 
 }
 
 // ========== V2: NEW SYSTEMS ==========
+
+// Make background follow camera position
+fn update_background_position(
+    camera_query: Query<&Transform, With<MainCamera>>,
+    mut background_query: Query<&mut Transform, (With<Background>, Without<MainCamera>)>,
+) {
+    if let Ok(camera_transform) = camera_query.get_single() {
+        if let Ok(mut background_transform) = background_query.get_single_mut() {
+            // Keep background centered on camera position but much further back
+            background_transform.translation.x = camera_transform.translation.x;
+            background_transform.translation.y = camera_transform.translation.y;
+            background_transform.translation.z = -200.0; // Stay far back
+        }
+    }
+}
 
 // V2: Camera follows player smoothly
 fn camera_follow_player(
@@ -2588,9 +2579,9 @@ fn update_background_tiles(
         bg_tiles.iter().map(|(_, tile)| (tile.grid_x, tile.grid_y)).collect();
     
     // Spawn missing tiles
-    let background_texture = asset_server.load(
-        "240_F_324745441_29s2iZ2NoUgq12WDBQcJ4CRjPn82Kc0D_imgupscaler.ai_General_4K.jpg"
-    );
+    let background_texture = asset_server.load("background.png");
+    let tile_width = 3840.0;
+    let tile_height = 2158.0;
     
     for (gx, gy) in needed_tiles {
         if !existing_tiles.contains(&(gx, gy)) {
@@ -2603,7 +2594,8 @@ fn update_background_tiles(
                         -100.0, // Far back but visible
                     ),
                     sprite: Sprite {
-                        color: Color::srgba(1.0, 1.0, 1.0, 0.4), // Dim for atmosphere
+                        color: Color::srgba(1.0, 1.0, 1.0, 1.0), // TEMP: Full opacity to ensure visibility
+                        custom_size: Some(Vec2::new(tile_width, tile_height)), // Explicit tile size
                         ..Default::default()
                     },
                     ..Default::default()
@@ -2633,6 +2625,7 @@ fn update_weapon_type(
 // V2.6: Powerful ocean wave casting (COMPLETE REDESIGN)
 fn spawn_wave_projectiles(
     mut commands: Commands,
+    asset_server: Res<AssetServer>,
     time: Res<Time>,
     run_state: Res<RunState>,
     player_query: Query<(&Transform, &PlayerVelocity, &Player)>,
@@ -2683,19 +2676,20 @@ fn spawn_wave_projectiles(
             let strength = 1.3 - (i as f32 * 0.1); // Inner waves faster
             let curve_velocity = (perpendicular * strength + move_dir * 0.2) * 500.0;
             
-            // V2.6: MUCH LARGER particles (was 16px - looked like droplets!)
-            let wave_size = 28.0 + (i as f32 * 10.0); // 28, 38, 48px
-            
+            // Wave projectile with PNG sprite
+            let wave_texture = asset_server.load("sprites/effects/wave_projectile.png");
+            let wave_size = 24.0; // Match SVG size
+
             commands.spawn((
                 SpriteBundle {
+                    texture: wave_texture,
                     transform: Transform::from_xyz(
                         player_pos.x + spawn_offset.x,
                         player_pos.y + spawn_offset.y,
                         0.15,
                     ),
                     sprite: Sprite {
-                        color: Color::srgba(0.2, 0.9, 1.6, 1.0), // VERY bright cyan
-                        custom_size: Some(Vec2::splat(wave_size)),
+                        custom_size: Some(Vec2::new(wave_size, wave_size * 0.5)), // Match SVG aspect ratio
                         ..Default::default()
                     },
                     ..Default::default()
@@ -2770,10 +2764,9 @@ fn update_particles(
 }
 
 // V2.5: Wave trail collision with enemies
-// V2.7: Added game_font for power-up spawning
 fn handle_wave_collisions(
     mut commands: Commands,
-    _game_font: Res<GameFont>,
+    asset_server: Res<AssetServer>,
     mut score: ResMut<Score>,
     mut combo: ResMut<Combo>,
     mut rng: Local<Option<StdRng>>,
@@ -2803,7 +2796,7 @@ fn handle_wave_collisions(
                     camera_shake.trauma = (camera_shake.trauma + 0.15).min(1.0);
                     hit_freeze.timer = Timer::from_seconds(HIT_FREEZE_DURATION, TimerMode::Once);
                     spawn_death_explosion(&mut commands, enemy_pos);
-                    maybe_spawn_power_up(&mut commands, &_game_font.0, rng, enemy_pos);
+                    maybe_spawn_power_up(&mut commands, &asset_server, rng, enemy_pos);
                     commands.entity(enemy_entity).despawn_recursive();
                 }
                 
