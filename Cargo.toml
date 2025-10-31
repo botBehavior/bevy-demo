@@ -18,13 +18,12 @@ bevy = { version = "0.14", default-features = false, features = [
     "bevy_asset",
     "bevy_core_pipeline",
     "bevy_render",
-    "bevy_wgpu",
-    "webgl2",
     "bevy_sprite",
     "bevy_state",
     "bevy_text",
     "bevy_ui",
     "bevy_winit",
+    "webgl2",
     "png",
 ] }
 console_error_panic_hook = "0.1"
