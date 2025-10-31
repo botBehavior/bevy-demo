@@ -9,6 +9,7 @@ path = "src/lib.rs"
 [dependencies]
 bevy = { workspace = true }
 rand = { workspace = true }
+getrandom = { workspace = true }
 threadweaver-core = { path = "../core" }
 threadweaver-platform = { path = "../platform" }
 

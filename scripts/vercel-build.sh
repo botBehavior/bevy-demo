@@ -13,4 +13,8 @@ if ! command -v trunk >/dev/null 2>&1; then
   cargo install --locked trunk
 fi
 
+if ! command -v wasm-bindgen >/dev/null 2>&1; then
+  cargo install --locked wasm-bindgen-cli
+fi
+
 trunk build --release

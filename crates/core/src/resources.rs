@@ -20,6 +20,10 @@ impl RunState {
         self.active && !self.paused
     }
 
+    pub fn is_active(&self) -> bool {
+        self.active
+    }
+
     pub fn pause(&mut self) {
         self.paused = true;
     }

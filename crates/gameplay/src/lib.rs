@@ -1,13 +1,17 @@
-use bevy::input::gamepad::{GamepadAxis, GamepadEvent, GamepadEventType};
+use bevy::input::gamepad::{GamepadAxisType, GamepadEvent};
 use bevy::input::touch::{TouchInput, TouchPhase};
 use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 use rand::prelude::*;
+
+#[cfg(target_arch = "wasm32")]
+use getrandom as _;
 use std::f32::consts::TAU;
 use std::time::Duration;
 use threadweaver_core::components::*;
 use threadweaver_core::constants::*;
 use threadweaver_core::resources::*;
-use threadweaver_core::shop::{ShopItem, UpgradeType, SHOP_ITEMS};
+use threadweaver_core::shop::{UpgradeType, SHOP_ITEMS};
 use threadweaver_core::util::{clamp_to_bounds, screen_to_world};
 use threadweaver_platform::{load_currency, load_upgrades, save_currency, save_upgrades};
 
@@ -40,27 +44,36 @@ impl Plugin for GameplayPlugin {
             .add_systems(
                 Update,
                 (
-                    read_pointer_input,
-                    read_touch_input,
-                    read_gamepad_input,
-                    move_player,
-                    spawn_trail_segments,
-                    update_trail_segments,
-                    spawn_enemies,
-                    move_enemies,
-                    resolve_trail_hits,
-                    resolve_player_collisions,
-                    tick_powerups,
-                    apply_powerup_pickups,
-                    update_shield_state,
-                    advance_wave_projectile_timer,
-                    update_wave_projectiles,
-                    update_particles,
-                    apply_screen_shake,
+                    (
+                        read_pointer_input,
+                        read_touch_input,
+                        read_gamepad_input,
+                        move_player,
+                        spawn_trail_segments,
+                        update_trail_segments,
+                        spawn_enemies,
+                        move_enemies,
+                        resolve_trail_hits,
+                        resolve_player_collisions,
+                    )
+                        .chain(),
+                    (
+                        tick_powerups,
+                        apply_powerup_pickups,
+                        update_shield_state,
+                        advance_wave_projectile_timer,
+                        update_wave_projectiles,
+                        update_particles,
+                        apply_screen_shake,
+                    )
+                        .chain(),
                     handle_player_hit_events,
-                    apply_shop_purchases,
-                    persist_currency_changes,
-                    persist_upgrade_changes,
+                    (
+                        apply_shop_purchases,
+                        persist_currency_changes,
+                        persist_upgrade_changes,
+                    )
+                        .chain(),
                 )
                     .chain(),
             )
@@ -168,9 +181,9 @@ fn read_pointer_input(
         return;
     }
 
-    if windows.get_single().is_err() {
+    let Ok(window) = windows.get_single() else {
         return;
-    }
+    };
     let Ok((camera, transform)) = camera_q.get_single() else {
         return;
     };
@@ -234,11 +247,11 @@ fn read_gamepad_input(
     }
 
     for event in events.read() {
-        if let GamepadEventType::AxisChanged(axis, value) = event.event_type {
-            if axis == GamepadAxis::LeftStickX {
-                target.position.x += value * 12.0;
-            } else if axis == GamepadAxis::LeftStickY {
-                target.position.y += value * 12.0;
+        if let GamepadEvent::Axis(axis_event) = event {
+            match axis_event.axis_type {
+                GamepadAxisType::LeftStickX => target.position.x += axis_event.value * 12.0,
+                GamepadAxisType::LeftStickY => target.position.y += axis_event.value * 12.0,
+                _ => {}
             }
         }
     }
@@ -346,7 +359,7 @@ fn update_trail_segments(
         }
 
         let t = (segment.remaining / TRAIL_LIFETIME).clamp(0.0, 1.0);
-        sprite.color.set_a(0.15 + 0.8 * t);
+        sprite.color.set_alpha(0.15 + 0.8 * t);
         transform.scale = Vec3::splat(0.8 + t * 0.3);
     }
 }
@@ -707,7 +720,9 @@ fn update_particles(
         }
 
         transform.translation += particle.velocity.extend(0.0) * time.delta_seconds();
-        sprite.color.set_a(1.0 - particle.age / particle.lifetime);
+        sprite
+            .color
+            .set_alpha(1.0 - particle.age / particle.lifetime);
     }
 }
 
@@ -764,7 +779,7 @@ fn reset_when_run_stops(
     mut score: ResMut<Score>,
     mut health: ResMut<PlayerHealth>,
 ) {
-    if !run_state.active {
+    if !run_state.is_active() {
         score.reset_run();
         health.reset();
         run_state.reset();
