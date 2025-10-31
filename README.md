@@ -1,13 +1,13 @@
 # Threadweaver – Bevy Web Survivor
 
-Threadweaver is a browser-first survivor prototype powered by [Bevy](https://bevyengine.org/) and WebGPU. The project ships a single code base for desktop, web, and touch devices with adaptive UI, persistent progression, and high-juice combat.
+Threadweaver is a browser-first survivor prototype powered by [Bevy](https://bevyengine.org/) and WebGL2 (WebGPU-ready). The project ships a single code base for desktop, web, and touch devices with adaptive UI, persistent progression, and high-juice combat.
 
 ![Rust](https://img.shields.io/badge/rust-2021-orange.svg)
 ![Bevy](https://img.shields.io/badge/bevy-0.14-blue.svg)
-![Target](https://img.shields.io/badge/target-webgpu%20%7C%20wasm-blueviolet.svg)
+![Target](https://img.shields.io/badge/target-webgl2%20%7C%20wasm-blueviolet.svg)
 
 ## Feature Highlights
-- **WebGPU-first build** – tuned for `wasm32-unknown-unknown`, with Trunk + wasm-opt pipeline and desktop parity for smoke tests.
+- **Web build baseline** - currently WebGL2 via Bevy 0.14 (Trunk + wasm-opt), with WebGPU roadmap tracked in docs.
 - **Responsive UI system** – HUD and modal shop scale from phones (<720px) to ultrawide monitors, with live breakpoints and focus highlights.
 - **Universal input support** – mouse/keyboard, touch drag, and gamepad navigation map to the same pointer + action vocabulary.
 - **Persistent progression** – localStorage on the web and filesystem snapshots on native keep currency and upgrades in sync.
@@ -17,7 +17,7 @@ Threadweaver is a browser-first survivor prototype powered by [Bevy](https://bev
 - `threadweaver-gameplay` – combat loops, spawning, FX, and persistence glue.
 - `threadweaver-ui` – adaptive HUD + upgrade shop with theming and accessibility.
 - `threadweaver-platform` – storage backends (web and native shims).
-- `threadweaver-launcher` – thin binary that wires plugins and WebGPU-friendly defaults.
+- `threadweaver-launcher` – thin binary that wires plugins and WebGL2-friendly defaults.
 
 ## Quick Start
 
@@ -27,7 +27,7 @@ rustup target add wasm32-unknown-unknown
 cargo install trunk wasm-bindgen-cli --locked   # run once
 ```
 
-### Web (WASM/WebGPU)
+### Web (WASM / WebGL2)
 ```bash
 make web-dev       # trunk serve --release with hot reloads
 make web-release   # optimized dist/ with wasm-bindgen + wasm-opt
@@ -60,3 +60,4 @@ make web-release  # build optimized WASM bundle
 
 ## Licensing
 Project assets and code follow the repository’s root LICENSE unless otherwise noted in the `assets/` tree.
+
