@@ -22,7 +22,7 @@ fn main() {
 
     let mut app = App::new();
     let backends = if cfg!(target_arch = "wasm32") {
-        Backends::BROWSER_WEBGPU
+        Backends::BROWSER_WEBGPU | Backends::GL
     } else {
         Backends::PRIMARY | Backends::SECONDARY
     };
