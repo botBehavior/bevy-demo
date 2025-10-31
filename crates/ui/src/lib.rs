@@ -563,26 +563,28 @@ fn update_hud(
     currency: Res<Currency>,
     player_health: Res<PlayerHealth>,
     shield: Res<ShieldState>,
-    mut score_text: Query<&mut Text, With<HudScore>>,
-    mut best_text: Query<&mut Text, (With<HudStatus>, Without<HudScore>)>,
-    mut health_text: Query<&mut Text, (With<HudHealth>, Without<HudScore>)>,
-    mut buff_text: Query<&mut Text, With<HudBuffs>>,
-    mut currency_text: Query<&mut Text, With<HudCombo>>,
+    mut hud_text: ParamSet<(
+        Query<&mut Text, With<HudScore>>,
+        Query<&mut Text, With<HudStatus>>,
+        Query<&mut Text, With<HudHealth>>,
+        Query<&mut Text, With<HudBuffs>>,
+        Query<&mut Text, With<HudCombo>>,
+    )>,
 ) {
-    if let Ok(mut text) = score_text.get_single_mut() {
+    if let Ok(mut text) = hud_text.p0().get_single_mut() {
         text.sections[0].value = format!("Score {:04}", score.current);
     }
 
-    if let Ok(mut text) = best_text.get_single_mut() {
+    if let Ok(mut text) = hud_text.p1().get_single_mut() {
         text.sections[0].value = format!("Best {:04}", score.best);
     }
 
-    if let Ok(mut text) = health_text.get_single_mut() {
+    if let Ok(mut text) = hud_text.p2().get_single_mut() {
         text.sections[0].value =
             format!("Health {} / {}", player_health.current, player_health.max);
     }
 
-    if let Ok(mut text) = buff_text.get_single_mut() {
+    if let Ok(mut text) = hud_text.p3().get_single_mut() {
         if shield.remaining > 0.0 {
             text.sections[0].value = format!("Shield {:0.1}s", shield.remaining);
         } else {
@@ -590,7 +592,7 @@ fn update_hud(
         }
     }
 
-    if let Ok(mut text) = currency_text.get_single_mut() {
+    if let Ok(mut text) = hud_text.p4().get_single_mut() {
         text.sections[0].value = format!("Currency {}", currency.balance);
     }
 }
