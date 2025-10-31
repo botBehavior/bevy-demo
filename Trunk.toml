@@ -2,6 +2,7 @@
 target = "index.html"
 public_url = "."
 dist = "dist"
+cargo-args = ["--bin", "threadweaver"]
 
 [serve]
 port = 8080

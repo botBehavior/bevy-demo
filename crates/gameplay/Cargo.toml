@@ -1,0 +1,13 @@
+[package]
+name = \"threadweaver-gameplay\"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = \"src/lib.rs\"
+
+[dependencies]
+bevy = { workspace = true }
+rand = { workspace = true }
+threadweaver-core = { path = "../core" }
+threadweaver-platform = { path = "../platform" }

@@ -1,29 +1,26 @@
-╔════════════════════════════════════════════════════════════╗
-║              🎮 BEVY SURVIVOR DEMO - v2.7.1               ║
-╚════════════════════════════════════════════════════════════╝
+THREADWEAVER // PLAY NOW
+=========================
 
-▶ PLAY:
-  cargo run --release
+HOW TO RUN (DEV BUILD)
+  make web-dev        # launches trunk serve with live reload
+  make web-release    # optimized WebGPU build into dist/
+  cargo run -p threadweaver-launcher   # native sanity check (optional)
 
-🎯 CONTROLS:
-  Mouse       - Move/aim
-  Click/Space - Trail weapon (deadly follow trail)
-  Tab         - Wave weapon (curved projectiles)
-  Esc         - Pause/unpause
+CORE CONTROLS
+  Mouse / Touch drag   -> steer the Weaver
+  Left Click / Space   -> confirm, slice with trail
+  Gamepad South        -> confirm / interact
+  Gamepad East / Esc   -> pause or close shop
 
-💎 POWER-UPS:
-  🔴 Circle     - Heart (+1 health)
-  🔵 Tall Rect  - Shield (4s invincibility)
-  🟡 Square     - Damage (+50% per stack)
-  🟣 Circle     - Accuracy (snappier movement)
+UI & EXPERIENCE NOTES
+  - HUD auto-converts to a compact bar below 720px width.
+  - Upgrade shop stretches to full width on phones and keeps scrollable cards.
+  - Focus highlight follows mouse, touch, and gamepad selection for parity.
+  - Currency, upgrades, and theme selections persist between sessions (web + native).
 
-🎮 TIPS:
-  • Keep moving - survival is mobility
-  • Build combos for 5x score multiplier
-  • Stack damage upgrades for power fantasy
-  • Shield is tactical (only 4s!)
-  • Accuracy makes movement more responsive
+GOOD TO KNOW
+  - Keep moving to amplify trail damage and trigger power-up drops.
+  - Shield pickups buy four seconds of invulnerability; save them for crowd bursts.
+  - Wave weapon unlocks when your movement speed spikes; dash to fan projectiles.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Built with Bevy 0.14 🦀 | See README.md for details
+Have fun weaving the thread!
