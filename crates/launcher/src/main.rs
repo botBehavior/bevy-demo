@@ -1,14 +1,20 @@
 use bevy::app::PluginGroupBuilder;
 use bevy::asset::AssetPlugin;
 use bevy::prelude::*;
-use bevy::render::settings::{Backends, WgpuSettings};
-use bevy::render::texture::ImagePlugin;
+use bevy::render::{
+    settings::{Backends, RenderCreation, WgpuSettings},
+    texture::ImagePlugin,
+    RenderPlugin,
+};
 use bevy::window::WindowPlugin;
 use threadweaver_gameplay::GameplayPlugin;
 use threadweaver_ui::ThreadweaverUiPlugin;
 
 #[cfg(target_arch = "wasm32")]
 use bevy::winit::WinitSettings;
+
+#[cfg(target_arch = "wasm32")]
+use uuid as _;
 
 fn main() {
     #[cfg(target_arch = "wasm32")]
@@ -22,11 +28,7 @@ fn main() {
     };
 
     app.insert_resource(ClearColor(Color::srgba(0.01, 0.01, 0.015, 1.0)))
-        .insert_resource(WgpuSettings {
-            backends: Some(backends),
-            ..Default::default()
-        })
-        .add_plugins(default_plugins())
+        .add_plugins(default_plugins(backends))
         .add_plugins((GameplayPlugin, ThreadweaverUiPlugin));
 
     #[cfg(target_arch = "wasm32")]
@@ -37,7 +39,7 @@ fn main() {
     app.run();
 }
 
-fn default_plugins() -> PluginGroupBuilder {
+fn default_plugins(backends: Backends) -> PluginGroupBuilder {
     let window = Window {
         title: "Threadweaver".into(),
         canvas: Some("#bevy-canvas".into()),
@@ -54,7 +56,14 @@ fn default_plugins() -> PluginGroupBuilder {
         })
         .set(ImagePlugin::default_nearest())
         .set(AssetPlugin {
-            watch_for_changes: false,
+            watch_for_changes_override: Some(false),
+            ..Default::default()
+        })
+        .set(RenderPlugin {
+            render_creation: RenderCreation::Automatic(WgpuSettings {
+                backends: Some(backends),
+                ..Default::default()
+            }),
             ..Default::default()
         })
         .build();

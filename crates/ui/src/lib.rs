@@ -1,4 +1,4 @@
-use bevy::input::gamepad::{GamepadButton, GamepadEvent, GamepadEventType};
+use bevy::input::gamepad::{GamepadButtonType, GamepadEvent};
 use bevy::prelude::*;
 use bevy::ui::BorderRadius;
 use bevy::window::{PrimaryWindow, WindowResized};
@@ -72,7 +72,7 @@ impl Plugin for ThreadweaverUiPlugin {
         app.insert_resource(UiTheme::default())
             .insert_resource(UiLayout::default())
             .add_systems(PostStartup, (setup_ui, initialize_layout).chain())
-            .configure_set(Update, UiSet)
+            .configure_sets(Update, UiSet)
             .add_systems(Update, update_layout_class.in_set(UiSet))
             .add_systems(
                 Update,
@@ -775,23 +775,30 @@ fn handle_gamepad_navigation(
     mut run_state: ResMut<RunState>,
 ) {
     for event in events.read() {
-        match event.event_type {
-            GamepadEventType::ButtonChanged(GamepadButton::South, value) if value > 0.5 => {
-                if shop_state.is_open {
-                    shop_state.selected_index = (shop_state.selected_index + 1) % SHOP_ITEMS.len();
-                }
+        if let GamepadEvent::Button(button_event) = event {
+            if button_event.value <= 0.5 {
+                continue;
             }
-            GamepadEventType::ButtonChanged(GamepadButton::East, value) if value > 0.5 => {
-                if shop_state.is_open {
-                    shop_state.is_open = false;
-                    run_state.resume();
-                } else {
-                    shop_state.is_open = true;
-                    run_state.pause();
-                    shop_state.selected_index = 0;
+
+            match button_event.button_type {
+                GamepadButtonType::South => {
+                    if shop_state.is_open {
+                        shop_state.selected_index =
+                            (shop_state.selected_index + 1) % SHOP_ITEMS.len();
+                    }
                 }
+                GamepadButtonType::East => {
+                    if shop_state.is_open {
+                        shop_state.is_open = false;
+                        run_state.resume();
+                    } else {
+                        shop_state.is_open = true;
+                        run_state.pause();
+                        shop_state.selected_index = 0;
+                    }
+                }
+                _ => {}
             }
-            _ => {}
         }
     }
 }
@@ -808,7 +815,7 @@ fn highlight_selected_card(
     for (card, mut border, mut background) in &mut cards {
         if card.index == shop_state.selected_index {
             border.0 = theme.accent;
-            background.0 = theme.panel_background.with_a(0.95);
+            background.0 = theme.panel_background.with_alpha(0.95);
         } else {
             border.0 = theme.panel_border;
             background.0 = theme.panel_background;
