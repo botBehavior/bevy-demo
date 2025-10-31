@@ -4,7 +4,7 @@ use bevy::ui::BorderRadius;
 use bevy::window::{PrimaryWindow, WindowResized};
 use threadweaver_core::components::*;
 use threadweaver_core::prelude::*;
-use threadweaver_core::shop::{ShopItem, SHOP_ITEMS, UpgradeType};
+use threadweaver_core::shop::{ShopItem, UpgradeType, SHOP_ITEMS};
 use threadweaver_gameplay::ShopPurchaseEvent;
 
 pub struct ThreadweaverUiPlugin;
@@ -69,28 +69,31 @@ struct ShopGrid;
 
 impl Plugin for ThreadweaverUiPlugin {
     fn build(&self, app: &mut App) {
-        app
-            .insert_resource(UiTheme::default())
+        app.insert_resource(UiTheme::default())
             .insert_resource(UiLayout::default())
             .add_systems(PostStartup, (setup_ui, initialize_layout).chain())
             .configure_set(Update, UiSet)
             .add_systems(Update, update_layout_class.in_set(UiSet))
-            .add_systems(Update, (
-                apply_layout_to_hud,
-                apply_layout_to_shop_modal,
-                apply_layout_to_shop_button,
-                apply_layout_to_shop_grid,
-                apply_layout_to_shop_cards,
-                update_hud,
-                update_health_bar,
-                update_shop_button_label,
-                sync_shop_visibility,
-                handle_shop_open_close,
-                handle_shop_purchases,
-                handle_keyboard_navigation,
-                handle_gamepad_navigation,
-                highlight_selected_card,
-            ).in_set(UiSet));
+            .add_systems(
+                Update,
+                (
+                    apply_layout_to_hud,
+                    apply_layout_to_shop_modal,
+                    apply_layout_to_shop_button,
+                    apply_layout_to_shop_grid,
+                    apply_layout_to_shop_cards,
+                    update_hud,
+                    update_health_bar,
+                    update_shop_button_label,
+                    sync_shop_visibility,
+                    handle_shop_open_close,
+                    handle_shop_purchases,
+                    handle_keyboard_navigation,
+                    handle_gamepad_navigation,
+                    highlight_selected_card,
+                )
+                    .in_set(UiSet),
+            );
     }
 }
 
@@ -154,7 +157,8 @@ fn setup_ui(mut commands: Commands, theme: Res<UiTheme>, assets: Res<GameAssets>
                 background_color: theme.accent_soft.into(),
                 border_radius: BorderRadius::all(Val::Px(12.0)),
                 ..Default::default()
-            }).with_children(|bar| {
+            })
+            .with_children(|bar| {
                 bar.spawn((
                     NodeBundle {
                         style: Style {
@@ -313,7 +317,13 @@ fn setup_ui(mut commands: Commands, theme: Res<UiTheme>, assets: Res<GameAssets>
         });
 }
 
-fn spawn_shop_card(parent: &mut ChildBuilder, item: &ShopItem, index: usize, theme: &UiTheme, font: &Handle<Font>) {
+fn spawn_shop_card(
+    parent: &mut ChildBuilder,
+    item: &ShopItem,
+    index: usize,
+    theme: &UiTheme,
+    font: &Handle<Font>,
+) {
     parent
         .spawn((
             NodeBundle {
@@ -370,37 +380,36 @@ fn spawn_shop_card(parent: &mut ChildBuilder, item: &ShopItem, index: usize, the
                 ShopLevelText(index),
             ));
 
-            card
-                .spawn((
-                    ButtonBundle {
-                        style: Style {
-                            width: Val::Percent(100.0),
-                            height: Val::Px(40.0),
-                            justify_content: JustifyContent::SpaceBetween,
-                            align_items: AlignItems::Center,
-                            padding: UiRect::axes(Val::Px(16.0), Val::Px(8.0)),
-                            ..Default::default()
-                        },
-                        background_color: theme.accent_soft.into(),
-                        border_color: theme.accent.into(),
-                        border_radius: BorderRadius::all(Val::Px(12.0)),
+            card.spawn((
+                ButtonBundle {
+                    style: Style {
+                        width: Val::Percent(100.0),
+                        height: Val::Px(40.0),
+                        justify_content: JustifyContent::SpaceBetween,
+                        align_items: AlignItems::Center,
+                        padding: UiRect::axes(Val::Px(16.0), Val::Px(8.0)),
                         ..Default::default()
                     },
-                    ShopPurchaseButton { index },
-                ))
-                .with_children(|button| {
-                    button.spawn((
-                        TextBundle::from_section(
-                            "Buy",
-                            TextStyle {
-                                font: font.clone(),
-                                font_size: 18.0,
-                                color: theme.text_primary,
-                            },
-                        ),
-                        ShopCostText(index),
-                    ));
-                });
+                    background_color: theme.accent_soft.into(),
+                    border_color: theme.accent.into(),
+                    border_radius: BorderRadius::all(Val::Px(12.0)),
+                    ..Default::default()
+                },
+                ShopPurchaseButton { index },
+            ))
+            .with_children(|button| {
+                button.spawn((
+                    TextBundle::from_section(
+                        "Buy",
+                        TextStyle {
+                            font: font.clone(),
+                            font_size: 18.0,
+                            color: theme.text_primary,
+                        },
+                    ),
+                    ShopCostText(index),
+                ));
+            });
         });
 }
 
@@ -449,7 +458,10 @@ fn apply_layout_to_hud(layout: Res<UiLayout>, mut hud: Query<&mut Style, With<Hu
     }
 }
 
-fn apply_layout_to_shop_button(layout: Res<UiLayout>, mut button: Query<&mut Style, With<ShopButton>>) {
+fn apply_layout_to_shop_button(
+    layout: Res<UiLayout>,
+    mut button: Query<&mut Style, With<ShopButton>>,
+) {
     if !layout.is_changed() {
         return;
     }
@@ -470,7 +482,10 @@ fn apply_layout_to_shop_button(layout: Res<UiLayout>, mut button: Query<&mut Sty
     }
 }
 
-fn apply_layout_to_shop_modal(layout: Res<UiLayout>, mut modal: Query<&mut Style, With<ShopModal>>) {
+fn apply_layout_to_shop_modal(
+    layout: Res<UiLayout>,
+    mut modal: Query<&mut Style, With<ShopModal>>,
+) {
     if !layout.is_changed() {
         return;
     }
@@ -563,7 +578,8 @@ fn update_hud(
     }
 
     if let Ok(mut text) = health_text.get_single_mut() {
-        text.sections[0].value = format!("Health {} / {}", player_health.current, player_health.max);
+        text.sections[0].value =
+            format!("Health {} / {}", player_health.current, player_health.max);
     }
 
     if let Ok(mut text) = buff_text.get_single_mut() {
@@ -579,7 +595,10 @@ fn update_hud(
     }
 }
 
-fn update_health_bar(player_health: Res<PlayerHealth>, mut bar: Query<&mut Style, With<HudHealthBar>>) {
+fn update_health_bar(
+    player_health: Res<PlayerHealth>,
+    mut bar: Query<&mut Style, With<HudHealthBar>>,
+) {
     if !player_health.is_changed() {
         return;
     }
@@ -601,18 +620,33 @@ fn update_shop_button_label(
 ) {
     if run_state.is_changed() || shop_state.is_changed() {
         if let Ok((mut text, mut background)) = buttons.get_single_mut() {
-            text.sections[0].value = if shop_state.is_open { "Close Shop".into() } else { "Open Shop".into() };
-            background.0 = if shop_state.is_open { theme.accent.into() } else { theme.accent_soft.into() };
+            text.sections[0].value = if shop_state.is_open {
+                "Close Shop".into()
+            } else {
+                "Open Shop".into()
+            };
+            background.0 = if shop_state.is_open {
+                theme.accent.into()
+            } else {
+                theme.accent_soft.into()
+            };
         }
     }
 }
 
-fn sync_shop_visibility(shop_state: Res<ShopState>, mut overlay: Query<&mut Visibility, With<ShopRoot>>) {
+fn sync_shop_visibility(
+    shop_state: Res<ShopState>,
+    mut overlay: Query<&mut Visibility, With<ShopRoot>>,
+) {
     if !shop_state.is_changed() {
         return;
     }
     if let Ok(mut visibility) = overlay.get_single_mut() {
-        *visibility = if shop_state.is_open { Visibility::Visible } else { Visibility::Hidden };
+        *visibility = if shop_state.is_open {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
     }
 }
 
@@ -729,7 +763,9 @@ fn handle_keyboard_navigation(
 
     if keys.just_pressed(KeyCode::Enter) && shop_state.is_open {
         let index = shop_state.selected_index.min(SHOP_ITEMS.len() - 1);
-        writer.send(ShopPurchaseEvent { item: SHOP_ITEMS[index].upgrade });
+        writer.send(ShopPurchaseEvent {
+            item: SHOP_ITEMS[index].upgrade,
+        });
     }
 }
 

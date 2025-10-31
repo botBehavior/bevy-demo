@@ -63,8 +63,18 @@ pub struct ShopItem {
 }
 
 impl ShopItem {
-    pub const fn new(upgrade: UpgradeType, description: &'static str, base_cost: u32, max_level: u32) -> Self {
-        Self { upgrade, description, base_cost, max_level }
+    pub const fn new(
+        upgrade: UpgradeType,
+        description: &'static str,
+        base_cost: u32,
+        max_level: u32,
+    ) -> Self {
+        Self {
+            upgrade,
+            description,
+            base_cost,
+            max_level,
+        }
     }
 
     pub fn cost_for_level(&self, level: u32) -> u32 {
@@ -89,8 +99,28 @@ impl ShopItem {
 }
 
 pub const SHOP_ITEMS: &[ShopItem] = &[
-    ShopItem::new(UpgradeType::MovementSpeed, "Move quicker across the weave.", 12, 4),
-    ShopItem::new(UpgradeType::MaxHealth, "Increase maximum resolve by one.", 15, 4),
-    ShopItem::new(UpgradeType::TrailDamage, "Empower the light trail for more damage.", 18, 3),
-    ShopItem::new(UpgradeType::ShieldDuration, "Extend the protective weave shield.", 20, 3),
+    ShopItem::new(
+        UpgradeType::MovementSpeed,
+        "Move quicker across the weave.",
+        12,
+        4,
+    ),
+    ShopItem::new(
+        UpgradeType::MaxHealth,
+        "Increase maximum resolve by one.",
+        15,
+        4,
+    ),
+    ShopItem::new(
+        UpgradeType::TrailDamage,
+        "Empower the light trail for more damage.",
+        18,
+        3,
+    ),
+    ShopItem::new(
+        UpgradeType::ShieldDuration,
+        "Extend the protective weave shield.",
+        20,
+        3,
+    ),
 ];

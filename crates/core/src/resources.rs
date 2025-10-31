@@ -10,7 +10,10 @@ pub struct RunState {
 
 impl RunState {
     pub fn new() -> Self {
-        Self { active: true, paused: false }
+        Self {
+            active: true,
+            paused: false,
+        }
     }
 
     pub fn is_running(&self) -> bool {
@@ -85,7 +88,11 @@ pub struct PlayerStats {
 
 impl Default for PlayerStats {
     fn default() -> Self {
-        Self { base_speed: 950.0, acceleration: 0.18, deceleration: 0.32 }
+        Self {
+            base_speed: 950.0,
+            acceleration: 0.18,
+            deceleration: 0.32,
+        }
     }
 }
 

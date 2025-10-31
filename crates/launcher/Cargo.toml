@@ -1,11 +1,11 @@
 [package]
-name = \"threadweaver-launcher\"
+name = "threadweaver-launcher"
 version.workspace = true
 edition.workspace = true
 
 [[bin]]
-name = \"threadweaver\"
-path = \"src/main.rs\"
+name = "threadweaver"
+path = "src/main.rs"
 
 [dependencies]
 bevy = { workspace = true }
@@ -14,3 +14,4 @@ threadweaver-core = { path = "../core" }
 threadweaver-gameplay = { path = "../gameplay" }
 threadweaver-platform = { path = "../platform" }
 threadweaver-ui = { path = "../ui" }
+

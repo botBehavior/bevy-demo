@@ -1,5 +1,5 @@
-pub mod constants;
 pub mod components;
+pub mod constants;
 pub mod resources;
 pub mod shop;
 pub mod util;

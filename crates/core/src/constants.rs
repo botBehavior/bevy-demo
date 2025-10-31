@@ -56,4 +56,3 @@ pub const SHIELD_TACTICAL_DURATION: f32 = 4.0;
 pub const POWER_UP_RARE_CHANCE: f32 = 0.15;
 
 pub const TOUCH_DRAG_DEADZONE: f32 = 12.0;
-

@@ -19,6 +19,7 @@ bevy = { version = "0.14", default-features = false, features = [
     "bevy_core_pipeline",
     "bevy_render",
     "bevy_wgpu",
+    "webgl2",
     "bevy_sprite",
     "bevy_state",
     "bevy_text",

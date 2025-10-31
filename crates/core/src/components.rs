@@ -8,7 +8,10 @@ pub struct Player {
 
 impl Default for Player {
     fn default() -> Self {
-        Self { weapon: WeaponType::Trail, wave_cooldown: 0.0 }
+        Self {
+            weapon: WeaponType::Trail,
+            wave_cooldown: 0.0,
+        }
     }
 }
 
@@ -25,7 +28,9 @@ pub struct PlayerVelocity {
 
 impl Default for PlayerVelocity {
     fn default() -> Self {
-        Self { current: Vec2::ZERO }
+        Self {
+            current: Vec2::ZERO,
+        }
     }
 }
 
@@ -46,7 +51,9 @@ pub struct EnemyVelocity {
 
 impl Default for EnemyVelocity {
     fn default() -> Self {
-        Self { current: Vec2::ZERO }
+        Self {
+            current: Vec2::ZERO,
+        }
     }
 }
 
@@ -63,7 +70,9 @@ pub struct Knockback {
 
 impl Default for Knockback {
     fn default() -> Self {
-        Self { velocity: Vec2::ZERO }
+        Self {
+            velocity: Vec2::ZERO,
+        }
     }
 }
 
@@ -109,7 +118,10 @@ pub struct ScreenShake {
 
 impl Default for ScreenShake {
     fn default() -> Self {
-        Self { trauma: 0.0, decay: 3.0 }
+        Self {
+            trauma: 0.0,
+            decay: 3.0,
+        }
     }
 }
 

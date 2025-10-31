@@ -7,7 +7,7 @@ use std::time::Duration;
 use threadweaver_core::components::*;
 use threadweaver_core::constants::*;
 use threadweaver_core::resources::*;
-use threadweaver_core::shop::{ShopItem, SHOP_ITEMS, UpgradeType};
+use threadweaver_core::shop::{ShopItem, UpgradeType, SHOP_ITEMS};
 use threadweaver_core::util::{clamp_to_bounds, screen_to_world};
 use threadweaver_platform::{load_currency, load_upgrades, save_currency, save_upgrades};
 
@@ -15,45 +15,55 @@ pub struct GameplayPlugin;
 
 impl Plugin for GameplayPlugin {
     fn build(&self, app: &mut App) {
-        app
-            .insert_resource(RunState::new())
+        app.insert_resource(RunState::new())
             .insert_resource(PointerTarget::default())
             .insert_resource(PlayerStats::default())
             .insert_resource(PlayerHealth::with_max(PLAYER_MAX_HEALTH))
-            .insert_resource(ShieldState { remaining: 0.0, duration: SHIELD_DURATION })
+            .insert_resource(ShieldState {
+                remaining: 0.0,
+                duration: SHIELD_DURATION,
+            })
             .insert_resource(Score::default())
-            .insert_resource(Currency { balance: load_currency() })
+            .insert_resource(Currency {
+                balance: load_currency(),
+            })
             .insert_resource(PurchasedUpgrades::default())
             .insert_resource(ShopState::default())
             .insert_resource(EnemySpawnTimer::new(ENEMY_SPAWN_INTERVAL_START))
-            .insert_resource(TrailSpawnTimer { timer: Timer::from_seconds(TRAIL_SPAWN_INTERVAL, TimerMode::Repeating) })
+            .insert_resource(TrailSpawnTimer {
+                timer: Timer::from_seconds(TRAIL_SPAWN_INTERVAL, TimerMode::Repeating),
+            })
             .add_event::<PlayerHitEvent>()
             .add_event::<ShopPurchaseEvent>()
             .add_systems(Startup, setup_scene)
             .add_systems(PostStartup, prime_persistence)
-            .add_systems(Update, (
-                read_pointer_input,
-                read_touch_input,
-                read_gamepad_input,
-                move_player,
-                spawn_trail_segments,
-                update_trail_segments,
-                spawn_enemies,
-                move_enemies,
-                resolve_trail_hits,
-                resolve_player_collisions,
-                tick_powerups,
-                apply_powerup_pickups,
-                update_shield_state,
-                advance_wave_projectile_timer,
-                update_wave_projectiles,
-                update_particles,
-                apply_screen_shake,
-                handle_player_hit_events,
-                apply_shop_purchases,
-                persist_currency_changes,
-                persist_upgrade_changes,
-            ).chain())
+            .add_systems(
+                Update,
+                (
+                    read_pointer_input,
+                    read_touch_input,
+                    read_gamepad_input,
+                    move_player,
+                    spawn_trail_segments,
+                    update_trail_segments,
+                    spawn_enemies,
+                    move_enemies,
+                    resolve_trail_hits,
+                    resolve_player_collisions,
+                    tick_powerups,
+                    apply_powerup_pickups,
+                    update_shield_state,
+                    advance_wave_projectile_timer,
+                    update_wave_projectiles,
+                    update_particles,
+                    apply_screen_shake,
+                    handle_player_hit_events,
+                    apply_shop_purchases,
+                    persist_currency_changes,
+                    persist_upgrade_changes,
+                )
+                    .chain(),
+            )
             .add_systems(Update, reset_when_run_stops.after(handle_player_hit_events));
     }
 }
@@ -112,7 +122,11 @@ fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>) {
         powerup_waveblast: waveblast_texture,
     });
 
-    commands.spawn((Camera2dBundle::default(), MainCamera, ScreenShake::default()));
+    commands.spawn((
+        Camera2dBundle::default(),
+        MainCamera,
+        ScreenShake::default(),
+    ));
 
     commands.spawn((
         SpriteBundle {
@@ -154,8 +168,12 @@ fn read_pointer_input(
         return;
     }
 
-    if windows.get_single().is_err() { return; }
-    let Ok((camera, transform)) = camera_q.get_single() else { return; };
+    if windows.get_single().is_err() {
+        return;
+    }
+    let Ok((camera, transform)) = camera_q.get_single() else {
+        return;
+    };
 
     for event in events.read() {
         if let Some(position) = screen_to_world(camera, transform, event.position) {
@@ -181,8 +199,12 @@ fn read_touch_input(
         return;
     }
 
-    if windows.get_single().is_err() { return; }
-    let Ok((camera, transform)) = camera_q.get_single() else { return; };
+    if windows.get_single().is_err() {
+        return;
+    }
+    let Ok((camera, transform)) = camera_q.get_single() else {
+        return;
+    };
 
     for touch in touch_events.read() {
         if touch.phase == TouchPhase::Ended {
@@ -190,7 +212,9 @@ fn read_touch_input(
         }
 
         if let Some(position) = screen_to_world(camera, transform, touch.position) {
-            if target.position.distance_squared(position) > TOUCH_DRAG_DEADZONE * TOUCH_DRAG_DEADZONE {
+            if target.position.distance_squared(position)
+                > TOUCH_DRAG_DEADZONE * TOUCH_DRAG_DEADZONE
+            {
                 target.position = position;
                 clamp_to_bounds(&mut target.position, ARENA_BOUNDS);
             }
@@ -228,13 +252,24 @@ fn move_player(
     upgrades: Res<PurchasedUpgrades>,
     target: Res<PointerTarget>,
     run_state: Res<RunState>,
-    mut query: Query<(&mut Transform, &mut PlayerVelocity, &mut Player, &mut Knockback), With<Player>>,
+    mut query: Query<
+        (
+            &mut Transform,
+            &mut PlayerVelocity,
+            &mut Player,
+            &mut Knockback,
+        ),
+        With<Player>,
+    >,
 ) {
     if !run_state.is_running() {
         return;
     }
 
-    let Ok((mut transform, mut velocity, mut player, mut knockback)) = query.get_single_mut() else { return; };
+    let Ok((mut transform, mut velocity, mut player, mut knockback)) = query.get_single_mut()
+    else {
+        return;
+    };
     let mut current = transform.translation.truncate();
     let delta = target.position - current;
     let distance = delta.length();
@@ -274,7 +309,9 @@ fn spawn_trail_segments(
         return;
     }
 
-    let Ok(transform) = query.get_single() else { return; };
+    let Ok(transform) = query.get_single() else {
+        return;
+    };
     if !timer.timer.tick(time.delta()).just_finished() {
         return;
     }
@@ -331,7 +368,9 @@ fn spawn_enemies(
         return;
     }
 
-    let Ok(player_transform) = player_q.get_single() else { return; };
+    let Ok(player_transform) = player_q.get_single() else {
+        return;
+    };
     let base_pos = player_transform.translation.truncate();
 
     let mut rng = rand::thread_rng();
@@ -360,20 +399,30 @@ fn spawn_enemies(
 
     let current = timer.timer.duration().as_secs_f32();
     let new_duration = (current * ENEMY_SPAWN_ACCELERATION).max(0.6);
-    timer.timer.set_duration(Duration::from_secs_f32(new_duration));
+    timer
+        .timer
+        .set_duration(Duration::from_secs_f32(new_duration));
 }
 
 fn move_enemies(
     time: Res<Time>,
     run_state: Res<RunState>,
     player_q: Query<&Transform, (With<Player>, Without<Enemy>)>,
-    mut enemies: Query<(&Enemy, &mut Transform, &mut EnemyVelocity, &mut Knockback, &mut EnemyHealth)>,
+    mut enemies: Query<(
+        &Enemy,
+        &mut Transform,
+        &mut EnemyVelocity,
+        &mut Knockback,
+        &mut EnemyHealth,
+    )>,
 ) {
     if !run_state.is_running() {
         return;
     }
 
-    let Ok(player_transform) = player_q.get_single() else { return; };
+    let Ok(player_transform) = player_q.get_single() else {
+        return;
+    };
     let player_position = player_transform.translation.truncate();
 
     for (enemy, mut transform, mut velocity, mut knockback, mut health) in &mut enemies {
@@ -417,7 +466,11 @@ fn resolve_trail_hits(
                     score.add(BASE_SCORE);
                     currency.credit(1);
                     if random::<f32>() < POWER_UP_DROP_CHANCE {
-                        spawn_powerup(&mut commands, &assets, &trail_transform.translation.truncate());
+                        spawn_powerup(
+                            &mut commands,
+                            &assets,
+                            &trail_transform.translation.truncate(),
+                        );
                     }
                 }
                 break;
@@ -439,7 +492,7 @@ fn spawn_powerup(commands: &mut Commands, assets: &Res<GameAssets>, position: &V
 
     let mut total = 0.0;
     let mut selected = PowerUpKind::Currency;
-    for (kind, weight) in cumulative {    
+    for (kind, weight) in cumulative {
         total += weight;
         if roll <= total {
             selected = kind;
@@ -466,7 +519,9 @@ fn spawn_powerup(commands: &mut Commands, assets: &Res<GameAssets>, position: &V
             ..Default::default()
         },
         PowerUp { kind: selected },
-        PowerUpLifetime { timer: Timer::from_seconds(POWER_UP_LIFETIME, TimerMode::Once) },
+        PowerUpLifetime {
+            timer: Timer::from_seconds(POWER_UP_LIFETIME, TimerMode::Once),
+        },
     ));
 }
 
@@ -484,7 +539,9 @@ fn resolve_player_collisions(
         return;
     }
 
-    let Ok((player_transform, mut knockback)) = player_query.get_single_mut() else { return; };
+    let Ok((player_transform, mut knockback)) = player_query.get_single_mut() else {
+        return;
+    };
     let player_pos = player_transform.translation.truncate();
 
     for (entity, transform) in &enemies {
@@ -496,7 +553,8 @@ fn resolve_player_collisions(
             }
 
             player_health.damage(PLAYER_COLLISION_DAMAGE);
-            knockback.velocity = (player_pos - enemy_pos).normalize_or_zero() * PLAYER_KNOCKBACK_STRENGTH;
+            knockback.velocity =
+                (player_pos - enemy_pos).normalize_or_zero() * PLAYER_KNOCKBACK_STRENGTH;
             score.current = score.current.saturating_sub(BASE_SCORE / 2);
             hit_events.send(PlayerHitEvent);
 
@@ -529,7 +587,9 @@ fn apply_powerup_pickups(
     player_q: Query<&Transform, With<Player>>,
     mut powerups: Query<(Entity, &PowerUp, &Transform)>,
 ) {
-    let Ok(player_transform) = player_q.get_single() else { return; };
+    let Ok(player_transform) = player_q.get_single() else {
+        return;
+    };
     let player_pos = player_transform.translation.truncate();
 
     for (entity, powerup, transform) in &mut powerups {
@@ -567,7 +627,9 @@ fn advance_wave_projectile_timer(
         return;
     }
 
-    let Ok((transform, player, velocity)) = player_query.get_single_mut() else { return; };
+    let Ok((transform, player, velocity)) = player_query.get_single_mut() else {
+        return;
+    };
     if player.wave_cooldown > 0.0 || velocity.current.length_squared() < 1200.0 {
         return;
     }
@@ -583,10 +645,18 @@ fn advance_wave_projectile_timer(
         SpriteBundle {
             texture: assets.wave_projectile.clone(),
             transform: Transform::from_xyz(spawn_position.x, spawn_position.y, 0.35),
-            sprite: Sprite { custom_size: Some(Vec2::new(32.0, 16.0)), ..Default::default() },
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(32.0, 16.0)),
+                ..Default::default()
+            },
             ..Default::default()
         },
-        WaveProjectile { velocity: forward * WAVE_SPEED, age: 0.0, lifetime: WAVE_LIFETIME, damage: WAVE_DAMAGE },
+        WaveProjectile {
+            velocity: forward * WAVE_SPEED,
+            age: 0.0,
+            lifetime: WAVE_LIFETIME,
+            damage: WAVE_DAMAGE,
+        },
     ));
 }
 
@@ -607,7 +677,12 @@ fn update_wave_projectiles(
 
         let position = transform.translation.truncate();
         for (enemy_entity, mut health, enemy_transform) in &mut enemies {
-            if enemy_transform.translation.truncate().distance_squared(position) < 400.0 {
+            if enemy_transform
+                .translation
+                .truncate()
+                .distance_squared(position)
+                < 400.0
+            {
                 health.current -= projectile.damage as f32;
                 if health.current <= 0.0 {
                     commands.entity(enemy_entity).despawn_recursive();
@@ -636,13 +711,22 @@ fn update_particles(
     }
 }
 
-fn apply_screen_shake(mut cameras: Query<&mut Transform, With<MainCamera>>, mut shake: Query<&mut ScreenShake>) {
-    let Ok(mut transform) = cameras.get_single_mut() else { return; };
-    let Ok(mut screen_shake) = shake.get_single_mut() else { return; };
+fn apply_screen_shake(
+    mut cameras: Query<&mut Transform, With<MainCamera>>,
+    mut shake: Query<&mut ScreenShake>,
+) {
+    let Ok(mut transform) = cameras.get_single_mut() else {
+        return;
+    };
+    let Ok(mut screen_shake) = shake.get_single_mut() else {
+        return;
+    };
 
     if screen_shake.trauma > 0.0 {
         let mut rng = rand::thread_rng();
-        let offset = Vec2::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)) * screen_shake.trauma * 6.0;
+        let offset = Vec2::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0))
+            * screen_shake.trauma
+            * 6.0;
         transform.translation.x = offset.x;
         transform.translation.y = offset.y;
         screen_shake.trauma = (screen_shake.trauma - screen_shake.decay * 0.016).max(0.0);
@@ -675,7 +759,11 @@ fn persist_upgrade_changes(upgrades: Res<PurchasedUpgrades>) {
     }
 }
 
-fn reset_when_run_stops(mut run_state: ResMut<RunState>, mut score: ResMut<Score>, mut health: ResMut<PlayerHealth>) {
+fn reset_when_run_stops(
+    mut run_state: ResMut<RunState>,
+    mut score: ResMut<Score>,
+    mut health: ResMut<PlayerHealth>,
+) {
     if !run_state.active {
         score.reset_run();
         health.reset();
@@ -691,7 +779,9 @@ fn apply_shop_purchases(
     mut shield: ResMut<ShieldState>,
 ) {
     for event in events.read() {
-        let Some(item) = SHOP_ITEMS.iter().find(|item| item.upgrade == event.item) else { continue; };
+        let Some(item) = SHOP_ITEMS.iter().find(|item| item.upgrade == event.item) else {
+            continue;
+        };
         let level = match event.item {
             UpgradeType::MovementSpeed => upgrades.movement_speed_level,
             UpgradeType::MaxHealth => upgrades.max_health_level,
@@ -730,5 +820,3 @@ fn apply_shop_purchases(
         }
     }
 }
-
-
