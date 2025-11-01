@@ -676,8 +676,9 @@ fn advance_wave_projectile_timer(
 fn update_wave_projectiles(
     mut commands: Commands,
     time: Res<Time>,
-    mut projectiles: Query<(Entity, &mut Transform, &mut WaveProjectile)>,
-    mut enemies: Query<(Entity, &mut EnemyHealth, &Transform), With<Enemy>>,
+    mut projectiles: Query<(Entity, &mut Transform, &mut WaveProjectile), Without<Enemy>>,
+    enemy_positions: Query<(Entity, &GlobalTransform), (With<Enemy>, Without<WaveProjectile>)>,
+    mut enemy_healths: Query<&mut EnemyHealth, With<Enemy>>,
 ) {
     for (entity, mut transform, mut projectile) in &mut projectiles {
         projectile.age += time.delta_seconds();
@@ -689,16 +690,18 @@ fn update_wave_projectiles(
         transform.translation += projectile.velocity.extend(0.0) * time.delta_seconds();
 
         let position = transform.translation.truncate();
-        for (enemy_entity, mut health, enemy_transform) in &mut enemies {
+        for (enemy_entity, enemy_transform) in &enemy_positions {
             if enemy_transform
-                .translation
+                .translation()
                 .truncate()
                 .distance_squared(position)
                 < 400.0
             {
-                health.current -= projectile.damage as f32;
-                if health.current <= 0.0 {
-                    commands.entity(enemy_entity).despawn_recursive();
+                if let Ok(mut health) = enemy_healths.get_mut(enemy_entity) {
+                    health.current -= projectile.damage as f32;
+                    if health.current <= 0.0 {
+                        commands.entity(enemy_entity).despawn_recursive();
+                    }
                 }
                 commands.entity(entity).despawn_recursive();
                 break;

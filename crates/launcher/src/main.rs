@@ -6,6 +6,9 @@ use bevy::render::{
     texture::ImagePlugin,
     RenderPlugin,
 };
+
+#[cfg(target_arch = "wasm32")]
+use bevy::render::settings::WgpuSettingsPriority;
 use bevy::window::WindowPlugin;
 use threadweaver_gameplay::GameplayPlugin;
 use threadweaver_ui::ThreadweaverUiPlugin;
@@ -49,7 +52,7 @@ fn default_plugins(backends: Backends) -> PluginGroupBuilder {
         ..Default::default()
     };
 
-    let mut plugins = DefaultPlugins
+    let plugins = DefaultPlugins
         .set(WindowPlugin {
             primary_window: Some(window),
             ..Default::default()
@@ -60,18 +63,38 @@ fn default_plugins(backends: Backends) -> PluginGroupBuilder {
             ..Default::default()
         })
         .set(RenderPlugin {
-            render_creation: RenderCreation::Automatic(WgpuSettings {
-                backends: Some(backends),
-                ..Default::default()
-            }),
+            render_creation: RenderCreation::Automatic(default_wgpu_settings(backends)),
             ..Default::default()
         })
         .build();
 
-    #[cfg(target_arch = "wasm32")]
-    {
-        plugins = plugins.disable::<bevy::log::LogPlugin>();
-    }
+    apply_wasm_overrides(plugins)
+}
 
+#[cfg(target_arch = "wasm32")]
+fn default_wgpu_settings(backends: Backends) -> WgpuSettings {
+    let mut settings = WgpuSettings {
+        backends: Some(backends),
+        ..Default::default()
+    };
+    settings.priority = WgpuSettingsPriority::WebGL2;
+    settings
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn default_wgpu_settings(backends: Backends) -> WgpuSettings {
+    WgpuSettings {
+        backends: Some(backends),
+        ..Default::default()
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn apply_wasm_overrides(plugins: PluginGroupBuilder) -> PluginGroupBuilder {
+    plugins.disable::<bevy::log::LogPlugin>()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn apply_wasm_overrides(plugins: PluginGroupBuilder) -> PluginGroupBuilder {
     plugins
 }
