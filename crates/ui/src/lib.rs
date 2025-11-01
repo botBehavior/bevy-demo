@@ -563,26 +563,28 @@ fn update_hud(
     currency: Res<Currency>,
     player_health: Res<PlayerHealth>,
     shield: Res<ShieldState>,
-    mut score_text: Query<&mut Text, With<HudScore>>,
-    mut best_text: Query<&mut Text, (With<HudStatus>, Without<HudScore>)>,
-    mut health_text: Query<&mut Text, (With<HudHealth>, Without<HudScore>)>,
-    mut buff_text: Query<&mut Text, With<HudBuffs>>,
-    mut currency_text: Query<&mut Text, With<HudCombo>>,
+    mut param_set: ParamSet<(
+        Query<&mut Text, (With<HudScore>, Without<ShopCostText>, Without<ShopLevelText>)>,
+        Query<&mut Text, (With<HudStatus>, Without<HudScore>, Without<ShopCostText>, Without<ShopLevelText>)>,
+        Query<&mut Text, (With<HudHealth>, Without<HudScore>, Without<ShopCostText>, Without<ShopLevelText>)>,
+        Query<&mut Text, (With<HudBuffs>, Without<ShopCostText>, Without<ShopLevelText>)>,
+        Query<&mut Text, (With<HudCombo>, Without<ShopCostText>, Without<ShopLevelText>)>,
+    )>,
 ) {
-    if let Ok(mut text) = score_text.get_single_mut() {
+    if let Ok(mut text) = param_set.p0().get_single_mut() {
         text.sections[0].value = format!("Score {:04}", score.current);
     }
 
-    if let Ok(mut text) = best_text.get_single_mut() {
+    if let Ok(mut text) = param_set.p1().get_single_mut() {
         text.sections[0].value = format!("Best {:04}", score.best);
     }
 
-    if let Ok(mut text) = health_text.get_single_mut() {
+    if let Ok(mut text) = param_set.p2().get_single_mut() {
         text.sections[0].value =
             format!("Health {} / {}", player_health.current, player_health.max);
     }
 
-    if let Ok(mut text) = buff_text.get_single_mut() {
+    if let Ok(mut text) = param_set.p3().get_single_mut() {
         if shield.remaining > 0.0 {
             text.sections[0].value = format!("Shield {:0.1}s", shield.remaining);
         } else {
@@ -590,7 +592,7 @@ fn update_hud(
         }
     }
 
-    if let Ok(mut text) = currency_text.get_single_mut() {
+    if let Ok(mut text) = param_set.p4().get_single_mut() {
         text.sections[0].value = format!("Currency {}", currency.balance);
     }
 }
@@ -674,8 +676,10 @@ fn handle_shop_purchases(
     currency: Res<Currency>,
     upgrades: Res<PurchasedUpgrades>,
     theme: Res<UiTheme>,
-    mut cost_texts: Query<(&ShopCostText, &mut Text)>,
-    mut level_texts: Query<(&ShopLevelText, &mut Text)>,
+    mut text_param_set: ParamSet<(
+        Query<(&ShopCostText, &mut Text)>,
+        Query<(&ShopLevelText, &mut Text)>,
+    )>,
     mut writer: EventWriter<ShopPurchaseEvent>,
 ) {
     for (interaction, button) in &mut interactions {
@@ -698,37 +702,43 @@ fn handle_shop_purchases(
         }
     }
 
-    for (handle, mut text) in &mut cost_texts {
-        let item = &SHOP_ITEMS[handle.0];
-        let level = match item.upgrade {
-            UpgradeType::MovementSpeed => upgrades.movement_speed_level,
-            UpgradeType::MaxHealth => upgrades.max_health_level,
-            UpgradeType::TrailDamage => upgrades.trail_damage_level,
-            UpgradeType::ShieldDuration => upgrades.shield_level,
-        };
-        if level >= item.max_level {
-            text.sections[0].value = "Maxed".into();
-            text.sections[0].style.color = theme.text_muted;
-        } else {
-            let cost = item.cost_for_level(level);
-            text.sections[0].value = format!("Buy ({})", cost);
-            text.sections[0].style.color = if currency.balance >= cost {
-                theme.text_primary
-            } else {
-                Color::srgb(0.85, 0.45, 0.45)
+    {
+        let mut cost_texts = text_param_set.p0();
+        for (handle, mut text) in &mut cost_texts {
+            let item = &SHOP_ITEMS[handle.0];
+            let level = match item.upgrade {
+                UpgradeType::MovementSpeed => upgrades.movement_speed_level,
+                UpgradeType::MaxHealth => upgrades.max_health_level,
+                UpgradeType::TrailDamage => upgrades.trail_damage_level,
+                UpgradeType::ShieldDuration => upgrades.shield_level,
             };
+            if level >= item.max_level {
+                text.sections[0].value = "Maxed".into();
+                text.sections[0].style.color = theme.text_muted;
+            } else {
+                let cost = item.cost_for_level(level);
+                text.sections[0].value = format!("Buy ({})", cost);
+                text.sections[0].style.color = if currency.balance >= cost {
+                    theme.text_primary
+                } else {
+                    Color::srgb(0.85, 0.45, 0.45)
+                };
+            }
         }
     }
 
-    for (handle, mut text) in &mut level_texts {
-        let item = &SHOP_ITEMS[handle.0];
-        let level = match item.upgrade {
-            UpgradeType::MovementSpeed => upgrades.movement_speed_level,
-            UpgradeType::MaxHealth => upgrades.max_health_level,
-            UpgradeType::TrailDamage => upgrades.trail_damage_level,
-            UpgradeType::ShieldDuration => upgrades.shield_level,
-        };
-        text.sections[0].value = format!("Level {} / {}", level, item.max_level);
+    {
+        let mut level_texts = text_param_set.p1();
+        for (handle, mut text) in &mut level_texts {
+            let item = &SHOP_ITEMS[handle.0];
+            let level = match item.upgrade {
+                UpgradeType::MovementSpeed => upgrades.movement_speed_level,
+                UpgradeType::MaxHealth => upgrades.max_health_level,
+                UpgradeType::TrailDamage => upgrades.trail_damage_level,
+                UpgradeType::ShieldDuration => upgrades.shield_level,
+            };
+            text.sections[0].value = format!("Level {} / {}", level, item.max_level);
+        }
     }
 }
 

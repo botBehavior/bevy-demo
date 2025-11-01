@@ -17,4 +17,5 @@ if ! command -v wasm-bindgen >/dev/null 2>&1; then
   cargo install --locked wasm-bindgen-cli
 fi
 
+unset NO_COLOR
 trunk build --release

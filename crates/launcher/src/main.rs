@@ -56,6 +56,7 @@ fn default_plugins(backends: Backends) -> PluginGroupBuilder {
         })
         .set(ImagePlugin::default_nearest())
         .set(AssetPlugin {
+            file_path: "../../assets".to_string(),
             watch_for_changes_override: Some(false),
             ..Default::default()
         })

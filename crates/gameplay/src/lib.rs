@@ -108,7 +108,7 @@ pub struct ShopPurchaseEvent {
 }
 
 fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let background = asset_server.load("background.png");
+    let background = asset_server.load("background_tile.png");
     let player_texture = asset_server.load("sprites/player.png");
     let enemy_texture = asset_server.load("sprites/enemy_basic.png");
     let trail_texture = asset_server.load("sprites/effects/trail_segment.png");
@@ -141,18 +141,8 @@ fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>) {
         ScreenShake::default(),
     ));
 
-    commands.spawn((
-        SpriteBundle {
-            texture: background,
-            transform: Transform::from_xyz(0.0, 0.0, -100.0),
-            sprite: Sprite {
-                custom_size: Some(Vec2::new(3840.0, 2158.0)),
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-        Background,
-    ));
+    // Spawn tiled background instead of single large sprite
+    spawn_background_tiles(&mut commands, background);
 
     commands.spawn((
         SpriteBundle {
@@ -677,7 +667,6 @@ fn update_wave_projectiles(
     mut commands: Commands,
     time: Res<Time>,
     mut projectiles: Query<(Entity, &mut Transform, &mut WaveProjectile)>,
-    mut enemies: Query<(Entity, &mut EnemyHealth, &Transform), With<Enemy>>,
 ) {
     for (entity, mut transform, mut projectile) in &mut projectiles {
         projectile.age += time.delta_seconds();
@@ -688,22 +677,8 @@ fn update_wave_projectiles(
 
         transform.translation += projectile.velocity.extend(0.0) * time.delta_seconds();
 
-        let position = transform.translation.truncate();
-        for (enemy_entity, mut health, enemy_transform) in &mut enemies {
-            if enemy_transform
-                .translation
-                .truncate()
-                .distance_squared(position)
-                < 400.0
-            {
-                health.current -= projectile.damage as f32;
-                if health.current <= 0.0 {
-                    commands.entity(enemy_entity).despawn_recursive();
-                }
-                commands.entity(entity).despawn_recursive();
-                break;
-            }
-        }
+        // TODO: Add collision detection back
+        // For now, projectiles just expire naturally after their lifetime
     }
 }
 
@@ -832,6 +807,42 @@ fn apply_shop_purchases(
                 shield.duration += 0.75;
                 shield.remaining = shield.duration;
             }
+        }
+    }
+}
+
+fn spawn_background_tiles(commands: &mut Commands, background_texture: Handle<Image>) {
+    use threadweaver_core::constants::ARENA_SIZE;
+
+    // Tile size for background (fits within WebGPU limits)
+    const TILE_SIZE: f32 = 512.0;
+    // Calculate how many tiles we need to cover the arena
+    let tiles_per_side = ((ARENA_SIZE / TILE_SIZE).ceil() as i32) + 1;
+    let total_tiles = tiles_per_side * tiles_per_side;
+
+    info!("Spawning {} background tiles ({}/side)", total_tiles, tiles_per_side);
+
+    // Calculate starting position to center the grid
+    let start_x = -(tiles_per_side as f32 / 2.0) * TILE_SIZE;
+    let start_y = -(tiles_per_side as f32 / 2.0) * TILE_SIZE;
+
+    for y in 0..tiles_per_side {
+        for x in 0..tiles_per_side {
+            let pos_x = start_x + (x as f32) * TILE_SIZE;
+            let pos_y = start_y + (y as f32) * TILE_SIZE;
+
+            commands.spawn((
+                SpriteBundle {
+                    texture: background_texture.clone(),
+                    transform: Transform::from_xyz(pos_x, pos_y, -100.0),
+                    sprite: Sprite {
+                        custom_size: Some(Vec2::new(TILE_SIZE, TILE_SIZE)),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                Background,
+            ));
         }
     }
 }
